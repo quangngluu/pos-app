@@ -4,6 +4,33 @@ export const runtime = "nodejs";
 
 const GOOGLE_PLACE_API_KEY = process.env.GOOGLE_PLACE_API_KEY || "";
 
+// Simple in-memory cache for place details (10 minutes TTL)
+const placeCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+function getCachedPlace(placeId: string) {
+  const cached = placeCache.get(placeId);
+  if (!cached) return null;
+  
+  const age = Date.now() - cached.timestamp;
+  if (age > CACHE_TTL) {
+    placeCache.delete(placeId);
+    return null;
+  }
+  
+  return cached.data;
+}
+
+function cachePlace(placeId: string, data: any) {
+  placeCache.set(placeId, { data, timestamp: Date.now() });
+  
+  // Simple cache size limit (keep last 100 entries)
+  if (placeCache.size > 100) {
+    const firstKey = placeCache.keys().next().value;
+    if (firstKey) placeCache.delete(firstKey);
+  }
+}
+
 function jsonError(message: string, status = 500) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -20,6 +47,18 @@ export async function GET(req: Request) {
 
     if (!GOOGLE_PLACE_API_KEY) {
       return jsonError("Missing GOOGLE_PLACE_API_KEY in .env.local", 500);
+    }
+
+    // Check cache first
+    const cachedData = getCachedPlace(placeId);
+    if (cachedData) {
+      return NextResponse.json(cachedData, {
+        status: 200,
+        headers: {
+          "Cache-Control": "private, max-age=600",
+          "X-Cache": "HIT",
+        },
+      });
     }
 
     // Build headers with minimal FieldMask
@@ -57,22 +96,26 @@ export async function GET(req: Request) {
     const display_name = displayNameText || formattedAddress;
     const full_address = formattedAddress || displayNameText;
 
+    // Build response
+    const responseData = {
+      place_id: data.id || placeId,
+      display_name,
+      full_address,
+      lat,
+      lng,
+    };
+
+    // Cache the result
+    cachePlace(placeId, responseData);
+
     // Return minimal, stable response
-    return NextResponse.json(
-      {
-        place_id: data.id || placeId,
-        display_name,
-        full_address,
-        lat,
-        lng,
+    return NextResponse.json(responseData, {
+      status: 200,
+      headers: {
+        "Cache-Control": "private, max-age=600",
+        "X-Cache": "MISS",
       },
-      {
-        status: 200,
-        headers: {
-          "Cache-Control": "private, max-age=600",
-        },
-      }
-    );
+    });
   } catch (e: any) {
     console.error("Place details error:", e);
     return jsonError(e?.message ?? "Unknown error", 500);
