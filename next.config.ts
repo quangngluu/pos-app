@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['next', 'react', '@supabase/supabase-js'],
   },
   
+  // Explicitly set turbopack root to this project directory
+  turbopack: {
+    root: process.cwd(),
+  },
+  
   // Security headers for internal-only app
   async headers() {
     const isProduction = process.env.NODE_ENV === "production";
