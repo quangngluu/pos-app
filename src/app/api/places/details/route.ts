@@ -61,11 +61,11 @@ export async function GET(req: Request) {
       });
     }
 
-    // Build headers with minimal FieldMask
+    // Build headers with comprehensive FieldMask including addressComponents
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": GOOGLE_PLACE_API_KEY,
-      "X-Goog-FieldMask": "id,displayName,formattedAddress,location",
+      "X-Goog-FieldMask": "id,displayName,formattedAddress,location,addressComponents",
     };
 
     if (sessionToken) {
@@ -89,26 +89,68 @@ export async function GET(req: Request) {
     const lat = data?.location?.latitude || null;
     const lng = data?.location?.longitude || null;
 
-    // Extract display name and full address
+    // Extract display name and formatted address
     const formattedAddress = data?.formattedAddress || "";
     const displayNameText = data?.displayName?.text || "";
     
+    // Parse address components to extract ward/district/city
+    const addressComponents = data?.addressComponents || [];
+    let ward = "";
+    let district = "";
+    let city = "";
+    
+    for (const component of addressComponents) {
+      const types = component.types || [];
+      const longName = component.longText || "";
+      
+      // Ward (phường) - priority order
+      if (!ward && (
+        types.includes("sublocality_level_2") ||
+        types.includes("sublocality_level_3") ||
+        types.includes("administrative_area_level_3") ||
+        types.includes("neighborhood")
+      )) {
+        ward = longName;
+      }
+      
+      // District (quận)
+      if (!district && (
+        types.includes("sublocality_level_1") ||
+        types.includes("administrative_area_level_2")
+      )) {
+        district = longName;
+      }
+      
+      // City (thành phố)
+      if (!city && (
+        types.includes("locality") ||
+        types.includes("administrative_area_level_1")
+      )) {
+        city = longName;
+      }
+    }
+    
+    // Prefer formattedAddress as the full address to display
+    const address_full = formattedAddress || displayNameText;
     const display_name = displayNameText || formattedAddress;
-    const full_address = formattedAddress || displayNameText;
 
     // Build response
     const responseData = {
       place_id: data.id || placeId,
       display_name,
-      full_address,
+      address_full, // Use this for input display (includes ward/district/city)
+      full_address: address_full, // Alias for backward compatibility
       lat,
       lng,
+      ward,
+      district,
+      city,
     };
 
     // Cache the result
     cachePlace(placeId, responseData);
 
-    // Return minimal, stable response
+    // Return comprehensive response
     return NextResponse.json(responseData, {
       status: 200,
       headers: {

@@ -286,11 +286,17 @@ export default function PosPage() {
       return;
     }
 
-    // Extract lat/lng from selected address
-    const lat = selectedAddr.lat ?? selectedAddr.raw?.location?.latitude ?? selectedAddr.raw?.geometry?.location?.lat;
-    const lng = selectedAddr.lng ?? selectedAddr.lon ?? selectedAddr.raw?.location?.longitude ?? selectedAddr.raw?.geometry?.location?.lng;
+    // Extract lat/lng from selected address with numeric safety
+    let lat = selectedAddr.lat ?? selectedAddr.raw?.location?.latitude ?? selectedAddr.raw?.geometry?.location?.lat;
+    let lng = selectedAddr.lng ?? selectedAddr.lon ?? selectedAddr.raw?.location?.longitude ?? selectedAddr.raw?.geometry?.location?.lng;
+    
+    // Ensure numeric conversion
+    if (lat !== null && lat !== undefined) lat = Number(lat);
+    if (lng !== null && lng !== undefined) lng = Number(lng);
 
-    if (!lat || !lng) {
+    console.debug('[POS] Nearest store: selectedAddr changed', { lat, lng, selectedAddr });
+
+    if (!lat || !lng || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       setStoreError("Không tìm được tọa độ địa chỉ");
       return;
     }
@@ -428,13 +434,16 @@ export default function PosPage() {
 
     // Skip search if suppressed (after selection)
     if (suppressAddrSearchRef.current) {
+      console.debug('[POS] Autocomplete: suppressed after selection');
       suppressAddrSearchRef.current = false;
       return;
     }
 
     // Generate session token if not exists
     if (!addrSessionToken) {
-      setAddrSessionToken(crypto.randomUUID());
+      const newToken = crypto.randomUUID();
+      console.debug('[POS] Autocomplete: generated new session token', newToken);
+      setAddrSessionToken(newToken);
     }
 
     const abortController = new AbortController();
@@ -442,14 +451,11 @@ export default function PosPage() {
 
     const t = setTimeout(async () => {
       try {
-        const res = await fetch("/api/geoapify/autocomplete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            input: q,
-            sessionToken: addrSessionToken,
-            limit: 6,
-          }),
+        const url = `/api/places/autocomplete?q=${encodeURIComponent(q)}${addrSessionToken ? `&sessionToken=${encodeURIComponent(addrSessionToken)}` : ""}&limit=6`;
+        console.debug('[POS] Autocomplete: fetching', { query: q, sessionToken: addrSessionToken });
+        
+        const res = await fetch(url, {
+          method: "GET",
           signal: abortController.signal,
         });
 
@@ -457,13 +463,16 @@ export default function PosPage() {
 
         const { ok, json } = await safeReadJson(res);
         if (ok && json?.items) {
+          console.debug('[POS] Autocomplete: received suggestions', json.items.length);
           setAddrSuggestions(json.items);
         } else {
+          console.debug('[POS] Autocomplete: no suggestions');
           setAddrSuggestions([]);
         }
       } catch (e: any) {
         if (e.name === "AbortError") return;
         if (!isLatest) return;
+        console.error('[POS] Autocomplete: error', e);
         setAddrSuggestions([]);
       }
     }, 250);
@@ -1381,6 +1390,14 @@ export default function PosPage() {
                 setAddrQuery(v);
                 setSelectedAddr(null);
               }}
+              onFocus={() => {
+                // Generate session token when user starts typing
+                if (!addrSessionToken) {
+                  const newToken = crypto.randomUUID();
+                  console.debug('[POS] Address input focused: generated session token', newToken);
+                  setAddrSessionToken(newToken);
+                }
+              }}
               style={{ padding: 8, width: "100%" }}
               placeholder="Gõ địa chỉ..."
             />
@@ -1402,10 +1419,12 @@ export default function PosPage() {
               >
                 {addrSuggestions.map((it) => (
                   <button
-                    key={`${it.place_id ?? ""}-${it.display_name ?? ""}`}
+                    key={`${it.place_id ?? ""}-${it.main_text ?? it.display_name ?? ""}`}
                     type="button"
                     onMouseDown={async (e) => {
                       e.preventDefault();
+                      console.debug('[POS] Address selected:', { place_id: it.place_id, main_text: it.main_text, secondary_text: it.secondary_text });
+                      
                       // Clear suggestions and suppress FIRST
                       setAddrSuggestions([]);
                       suppressAddrSearchRef.current = true;
@@ -1413,33 +1432,39 @@ export default function PosPage() {
                       // Fetch place details to enrich data
                       try {
                         if (it.place_id) {
-                          const res = await fetch(
-                            `/api/places/details?placeId=${encodeURIComponent(it.place_id)}` +
-                            (addrSessionToken ? `&sessionToken=${encodeURIComponent(addrSessionToken)}` : "")
-                          );
+                          const url = `/api/places/details?placeId=${encodeURIComponent(it.place_id)}` +
+                            (addrSessionToken ? `&sessionToken=${encodeURIComponent(addrSessionToken)}` : "");
+                          console.debug('[POS] Fetching place details:', { url, sessionToken: addrSessionToken });
+                          
+                          const res = await fetch(url);
                           const { ok, json } = await safeReadJson(res);
                           if (ok && json) {
-                            // Use enriched data with lat/lon/address
+                            // Use enriched data with full formatted address
+                            console.debug('[POS] Place details received:', json);
                             setSelectedAddr(json);
-                            setAddrQuery(json.display_name || it.display_name || "");
+                            // Use address_full (formattedAddress) instead of display_name for full address with ward/district
+                            setAddrQuery(json.address_full || json.full_address || json.display_name || it.full_address || "");
                           } else {
+                            console.warn('[POS] Place details failed, using autocomplete data');
                             // Fallback to autocomplete data
                             setSelectedAddr(it);
-                            setAddrQuery(it.display_name || "");
+                            setAddrQuery(it.full_address || it.display_name || "");
                           }
                         } else {
+                          console.warn('[POS] No place_id, using autocomplete data as-is');
                           // No place_id, use as-is
                           setSelectedAddr(it);
-                          setAddrQuery(it.display_name || "");
+                          setAddrQuery(it.full_address || it.display_name || "");
                         }
                       } catch (err) {
-                        console.error("Place details fetch error:", err);
+                        console.error("[POS] Place details fetch error:", err);
                         // Fallback to autocomplete data
                         setSelectedAddr(it);
-                        setAddrQuery(it.display_name || "");
+                        setAddrQuery(it.full_address || it.display_name || "");
                       }
                       
                       // Reset session token after selection
+                      console.debug('[POS] Resetting session token after selection');
                       setAddrSessionToken("");
                     }}
                     style={{
@@ -1453,7 +1478,17 @@ export default function PosPage() {
                       cursor: "pointer",
                     }}
                   >
-                    {it.display_name}
+                    {/* 2-line display: mainText (street) + secondaryText (ward/district/city) */}
+                    <div style={{ lineHeight: 1.4 }}>
+                      <div style={{ fontWeight: 500 }}>
+                        {it.main_text || it.display_name || ""}
+                      </div>
+                      {it.secondary_text && (
+                        <div style={{ fontSize: "0.9em", opacity: 0.7, marginTop: 2 }}>
+                          {it.secondary_text}
+                        </div>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
