@@ -1,0 +1,371 @@
+-- Migration: Normalize Master Data - Category Hierarchy & SKU Consolidation
+-- Description: Consolidate to single source of truth for categories, subcategories, and SKUs
+-- Date: 2026-01-31
+
+-- =====================================================
+-- SECTION 1: CATEGORY NORMALIZATION
+-- =====================================================
+
+-- Step 1.1: Migrate data from product_categories to categories if it exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_name = 'product_categories'
+  ) THEN
+    -- Migrate product_categories to categories
+    INSERT INTO public.categories (code, name, sort_order, is_active, created_at, updated_at)
+    SELECT 
+      UPPER(TRIM(pc.code)) AS code,
+      TRIM(COALESCE(pc.name, INITCAP(pc.code))) AS name,
+      COALESCE(pc.sort_order, 0) AS sort_order,
+      COALESCE(pc.is_active, true) AS is_active,
+      COALESCE(pc.created_at, NOW()) AS created_at,
+      COALESCE(pc.updated_at, NOW()) AS updated_at
+    FROM public.product_categories pc
+    WHERE pc.code IS NOT NULL AND TRIM(pc.code) != ''
+    ON CONFLICT (code) DO UPDATE SET
+      name = COALESCE(EXCLUDED.name, categories.name),
+      sort_order = EXCLUDED.sort_order,
+      is_active = EXCLUDED.is_active,
+      updated_at = NOW();
+    
+    RAISE NOTICE 'Migrated data from product_categories to categories';
+    
+    -- Add comment to deprecate product_categories
+    COMMENT ON TABLE public.product_categories IS 
+      'DEPRECATED: Use public.categories instead. This table is kept for backward compatibility but should not be used by the application.';
+  ELSE
+    RAISE NOTICE 'Table product_categories does not exist, skipping migration';
+  END IF;
+END $$;
+
+-- Step 1.2: Ensure all categories currently used in products exist in categories table
+INSERT INTO public.categories (code, name, sort_order, is_active)
+SELECT DISTINCT
+  UPPER(TRIM(p.category_code)) AS code,
+  INITCAP(TRIM(p.category_code)) AS name,
+  999 AS sort_order, -- Put auto-created categories at end
+  true AS is_active
+FROM public.products p
+WHERE p.category_code IS NOT NULL 
+  AND TRIM(p.category_code) != ''
+  AND NOT EXISTS (
+    SELECT 1 FROM public.categories c 
+    WHERE c.code = UPPER(TRIM(p.category_code))
+  )
+ON CONFLICT (code) DO NOTHING;
+
+-- =====================================================
+-- SECTION 2: PRODUCTS.CATEGORY_CODE CONSTRAINT CLEANUP
+-- =====================================================
+
+-- Step 2.1: Drop CHECK constraint on products.category_code if it exists
+DO $$
+DECLARE
+  constraint_name TEXT;
+BEGIN
+  -- Find CHECK constraints on products.category_code
+  SELECT con.conname INTO constraint_name
+  FROM pg_constraint con
+  INNER JOIN pg_class rel ON rel.oid = con.conrelid
+  INNER JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY(con.conkey)
+  WHERE rel.relname = 'products'
+    AND con.contype = 'c'
+    AND att.attname = 'category_code'
+  LIMIT 1;
+  
+  IF constraint_name IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE public.products DROP CONSTRAINT IF EXISTS %I', constraint_name);
+    RAISE NOTICE 'Dropped CHECK constraint: %', constraint_name;
+  ELSE
+    RAISE NOTICE 'No CHECK constraint found on products.category_code';
+  END IF;
+END $$;
+
+-- Step 2.2: Drop existing FK constraint if different from what we want
+DO $$
+BEGIN
+  -- Drop old FK constraint if exists
+  ALTER TABLE public.products DROP CONSTRAINT IF EXISTS products_category_code_fkey;
+  ALTER TABLE public.products DROP CONSTRAINT IF EXISTS fk_products_category_code;
+  RAISE NOTICE 'Cleaned up old category_code foreign key constraints';
+EXCEPTION
+  WHEN undefined_table THEN
+    RAISE NOTICE 'Products table structure being prepared';
+END $$;
+
+-- Step 2.3: Normalize existing category_code values to uppercase
+UPDATE public.products
+SET category_code = UPPER(TRIM(category_code))
+WHERE category_code IS NOT NULL 
+  AND category_code != UPPER(TRIM(category_code));
+
+-- Step 2.4: Add new FK constraint to categories
+ALTER TABLE public.products 
+  ADD CONSTRAINT fk_products_category_code 
+  FOREIGN KEY (category_code) 
+  REFERENCES public.categories(code) 
+  ON DELETE SET NULL
+  ON UPDATE CASCADE;
+
+RAISE NOTICE 'Added FK constraint: products.category_code -> categories.code';
+
+-- =====================================================
+-- SECTION 3: SUBCATEGORY NORMALIZATION
+-- =====================================================
+
+-- Step 3.1: Ensure subcategory_id column exists
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' 
+      AND table_name = 'products' 
+      AND column_name = 'subcategory_id'
+  ) THEN
+    ALTER TABLE public.products ADD COLUMN subcategory_id UUID NULL;
+    RAISE NOTICE 'Added column products.subcategory_id';
+  ELSE
+    RAISE NOTICE 'Column products.subcategory_id already exists';
+  END IF;
+END $$;
+
+-- Step 3.2: Add FK constraint for subcategory_id
+DO $$
+BEGIN
+  ALTER TABLE public.products DROP CONSTRAINT IF EXISTS fk_products_subcategory_id;
+  
+  ALTER TABLE public.products 
+    ADD CONSTRAINT fk_products_subcategory_id 
+    FOREIGN KEY (subcategory_id) 
+    REFERENCES public.subcategories(id) 
+    ON DELETE SET NULL
+    ON UPDATE CASCADE;
+  
+  RAISE NOTICE 'Added FK constraint: products.subcategory_id -> subcategories.id';
+EXCEPTION
+  WHEN undefined_column THEN
+    RAISE NOTICE 'Subcategory_id column not ready yet';
+END $$;
+
+-- Step 3.3: Create missing subcategories based on products.menu_section
+INSERT INTO public.subcategories (category_code, name, sort_order, is_active)
+SELECT DISTINCT
+  UPPER(TRIM(p.category_code)) AS category_code,
+  TRIM(p.menu_section) AS name,
+  ROW_NUMBER() OVER (
+    PARTITION BY UPPER(TRIM(p.category_code)) 
+    ORDER BY TRIM(p.menu_section)
+  ) + 1000 AS sort_order, -- Offset to avoid conflicts
+  true AS is_active
+FROM public.products p
+WHERE p.menu_section IS NOT NULL 
+  AND TRIM(p.menu_section) != ''
+  AND p.category_code IS NOT NULL
+  AND TRIM(p.category_code) != ''
+  AND NOT EXISTS (
+    SELECT 1 FROM public.subcategories s
+    WHERE s.category_code = UPPER(TRIM(p.category_code))
+      AND LOWER(TRIM(s.name)) = LOWER(TRIM(p.menu_section))
+  )
+ON CONFLICT (category_code, name) DO NOTHING;
+
+RAISE NOTICE 'Created missing subcategories from products.menu_section';
+
+-- Step 3.4: Backfill products.subcategory_id by matching menu_section
+UPDATE public.products p
+SET subcategory_id = s.id,
+    updated_at = NOW()
+FROM public.subcategories s
+WHERE p.subcategory_id IS NULL
+  AND p.category_code IS NOT NULL
+  AND p.menu_section IS NOT NULL
+  AND TRIM(p.menu_section) != ''
+  AND s.category_code = UPPER(TRIM(p.category_code))
+  AND LOWER(TRIM(s.name)) = LOWER(TRIM(p.menu_section));
+
+RAISE NOTICE 'Backfilled products.subcategory_id from menu_section matching';
+
+-- Add index for subcategory_id
+CREATE INDEX IF NOT EXISTS idx_products_subcategory_id ON public.products(subcategory_id);
+
+-- =====================================================
+-- SECTION 4: SKU NORMALIZATION - PRODUCT_VARIANTS AS SOURCE OF TRUTH
+-- =====================================================
+
+-- Step 4.1: Migrate data from product_skus to product_variants if product_skus exists
+DO $$
+DECLARE
+  v_migrated_count INTEGER := 0;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_name = 'product_skus'
+  ) THEN
+    -- Map price_key from product_skus to size_key in product_variants
+    -- PRICE_SMALL -> STD, PRICE_PHE -> SIZE_PHE, PRICE_LARGE -> SIZE_LA
+    
+    INSERT INTO public.product_variants (product_id, size_key, sku_code, is_active, sort_order)
+    SELECT 
+      ps.product_id,
+      CASE 
+        WHEN ps.price_key = 'PRICE_SMALL' THEN 'STD'::public.size_key
+        WHEN ps.price_key = 'PRICE_PHE' THEN 'SIZE_PHE'::public.size_key
+        WHEN ps.price_key = 'PRICE_LARGE' THEN 'SIZE_LA'::public.size_key
+        WHEN ps.price_key = 'SIZE_PHE' THEN 'SIZE_PHE'::public.size_key
+        WHEN ps.price_key = 'SIZE_LA' THEN 'SIZE_LA'::public.size_key
+        ELSE 'STD'::public.size_key
+      END AS size_key,
+      ps.sku_code,
+      COALESCE(ps.is_active, true) AS is_active,
+      CASE 
+        WHEN ps.price_key IN ('PRICE_SMALL', 'STD') THEN 1
+        WHEN ps.price_key IN ('PRICE_PHE', 'SIZE_PHE') THEN 2
+        WHEN ps.price_key IN ('PRICE_LARGE', 'SIZE_LA') THEN 3
+        ELSE 999
+      END AS sort_order
+    FROM public.product_skus ps
+    WHERE ps.sku_code IS NOT NULL 
+      AND TRIM(ps.sku_code) != ''
+      AND NOT EXISTS (
+        SELECT 1 FROM public.product_variants pv
+        WHERE pv.product_id = ps.product_id
+          AND pv.sku_code = ps.sku_code
+      )
+    ON CONFLICT (product_id, size_key) DO UPDATE SET
+      sku_code = EXCLUDED.sku_code,
+      is_active = EXCLUDED.is_active,
+      updated_at = NOW();
+    
+    GET DIAGNOSTICS v_migrated_count = ROW_COUNT;
+    RAISE NOTICE 'Migrated % SKUs from product_skus to product_variants', v_migrated_count;
+    
+    -- Add deprecation comment
+    COMMENT ON TABLE public.product_skus IS 
+      'DEPRECATED: Use public.product_variants instead. This table is kept for backward compatibility but should not be used by the application.';
+  ELSE
+    RAISE NOTICE 'Table product_skus does not exist, skipping migration';
+  END IF;
+END $$;
+
+-- Step 4.2: Mark products.sku_code as legacy
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' 
+      AND table_name = 'products' 
+      AND column_name = 'sku_code'
+  ) THEN
+    COMMENT ON COLUMN public.products.sku_code IS 
+      'DEPRECATED: Use product_variants.sku_code instead. This column is kept for legacy compatibility only.';
+    RAISE NOTICE 'Marked products.sku_code as deprecated';
+  END IF;
+END $$;
+
+-- =====================================================
+-- SECTION 5: COMPATIBILITY VIEWS
+-- =====================================================
+
+-- Step 5.1: Create/update v_product_skus_compat view
+CREATE OR REPLACE VIEW public.v_product_skus_compat AS
+SELECT 
+  pv.product_id,
+  CASE 
+    WHEN pv.size_key = 'STD' THEN 'PRICE_SMALL'
+    WHEN pv.size_key = 'SIZE_PHE' THEN 'PRICE_PHE'
+    WHEN pv.size_key = 'SIZE_LA' THEN 'PRICE_LARGE'
+  END AS price_key,
+  pv.sku_code,
+  pv.is_active
+FROM public.product_variants pv;
+
+COMMENT ON VIEW public.v_product_skus_compat IS 
+  'Compatibility view mapping product_variants to old product_skus schema (price_key format)';
+
+-- Step 5.2: Ensure v_product_prices_compat view exists
+CREATE OR REPLACE VIEW public.v_product_prices_compat AS
+SELECT 
+  pv.product_id,
+  CASE 
+    WHEN pv.size_key = 'STD' THEN 'PRICE_SMALL'
+    WHEN pv.size_key = 'SIZE_PHE' THEN 'PRICE_PHE'
+    WHEN pv.size_key = 'SIZE_LA' THEN 'PRICE_LARGE'
+  END AS price_key,
+  pvp.price_vat_incl,
+  pvp.updated_at
+FROM public.product_variants pv
+INNER JOIN public.product_variant_prices pvp ON pvp.variant_id = pv.id
+WHERE pv.is_active = true;
+
+COMMENT ON VIEW public.v_product_prices_compat IS 
+  'Compatibility view mapping variant prices to old product_prices schema. Use this for gradual migration from product_prices table.';
+
+-- =====================================================
+-- SECTION 6: DATA VALIDATION & REPORTING
+-- =====================================================
+
+DO $$
+DECLARE
+  v_categories_count INTEGER;
+  v_subcategories_count INTEGER;
+  v_products_with_category INTEGER;
+  v_products_with_subcategory INTEGER;
+  v_variants_count INTEGER;
+  v_variant_prices_count INTEGER;
+  v_products_missing_category INTEGER;
+  v_variants_missing_price INTEGER;
+BEGIN
+  -- Gather statistics
+  SELECT COUNT(*) INTO v_categories_count FROM public.categories;
+  SELECT COUNT(*) INTO v_subcategories_count FROM public.subcategories;
+  SELECT COUNT(*) INTO v_products_with_category FROM public.products WHERE category_code IS NOT NULL;
+  SELECT COUNT(*) INTO v_products_with_subcategory FROM public.products WHERE subcategory_id IS NOT NULL;
+  SELECT COUNT(*) INTO v_variants_count FROM public.product_variants;
+  SELECT COUNT(*) INTO v_variant_prices_count FROM public.product_variant_prices;
+  
+  SELECT COUNT(*) INTO v_products_missing_category 
+  FROM public.products 
+  WHERE category_code IS NULL AND is_active = true;
+  
+  SELECT COUNT(*) INTO v_variants_missing_price
+  FROM public.product_variants pv
+  LEFT JOIN public.product_variant_prices pvp ON pvp.variant_id = pv.id
+  WHERE pv.is_active = true AND pvp.variant_id IS NULL;
+  
+  -- Print report
+  RAISE NOTICE '========================================================';
+  RAISE NOTICE 'MASTER DATA NORMALIZATION COMPLETE';
+  RAISE NOTICE '========================================================';
+  RAISE NOTICE 'Categories: %', v_categories_count;
+  RAISE NOTICE 'Subcategories: %', v_subcategories_count;
+  RAISE NOTICE 'Products with category: %', v_products_with_category;
+  RAISE NOTICE 'Products with subcategory: %', v_products_with_subcategory;
+  RAISE NOTICE 'Product variants (SKUs): %', v_variants_count;
+  RAISE NOTICE 'Variant prices: %', v_variant_prices_count;
+  RAISE NOTICE '--------------------------------------------------------';
+  
+  IF v_products_missing_category > 0 THEN
+    RAISE WARNING 'Active products missing category: %', v_products_missing_category;
+  END IF;
+  
+  IF v_variants_missing_price > 0 THEN
+    RAISE WARNING 'Active variants missing price: %', v_variants_missing_price;
+  END IF;
+  
+  IF v_products_missing_category = 0 AND v_variants_missing_price = 0 THEN
+    RAISE NOTICE 'Validation: All active products have categories and variants have prices';
+  END IF;
+  
+  RAISE NOTICE '========================================================';
+  RAISE NOTICE 'Legacy tables marked as DEPRECATED:';
+  RAISE NOTICE '  - product_categories (if exists)';
+  RAISE NOTICE '  - product_skus (if exists)';
+  RAISE NOTICE '  - products.sku_code column';
+  RAISE NOTICE '';
+  RAISE NOTICE 'Compatibility views created:';
+  RAISE NOTICE '  - v_product_skus_compat';
+  RAISE NOTICE '  - v_product_prices_compat';
+  RAISE NOTICE '========================================================';
+END $$;

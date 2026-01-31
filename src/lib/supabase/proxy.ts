@@ -41,7 +41,8 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/auth");
   const isApiRoute = pathname.startsWith("/api/");
   const isPosRoute = pathname.startsWith("/pos");
-  const requiresAuth = isApiRoute || isPosRoute;
+  const isAdminRoute = pathname.startsWith("/admin");
+  const requiresAuth = isApiRoute || isPosRoute || isAdminRoute;
 
   // If route requires auth and user not logged in
   if (requiresAuth && !user) {
