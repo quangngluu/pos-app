@@ -54,21 +54,55 @@ function getNum(x: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Simplified address parsing for new Place Details format
+// Safe coordinate parser (handles strings with comma/dot)
+function parseCoord(x: any): number | null {
+  if (typeof x === "number") {
+    return Number.isFinite(x) ? x : null;
+  }
+  if (typeof x === "string") {
+    const trimmed = x.trim().replace(",", ".");
+    const parsed = parseFloat(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+// Parse address from new Place Details format
 function parseAddressFromSelected(addrSelected: any, defaultAddress?: string) {
   if (!addrSelected) return null;
 
-  // New Place Details API returns: { place_id, display_name, full_address, lat, lng }
+  // Extract fields from new API: { place_id, display_name, full_address, lat, lng, lon, address: {...} }
   const placeId = getString(addrSelected.place_id) ?? null;
   const fullAddress = getString(addrSelected.full_address) ?? getString(addrSelected.display_name) ?? null;
-  const lat = getNum(addrSelected.lat) ?? null;
-  const lng = getNum(addrSelected.lng) ?? null;
+  
+  // Accept both lng and lon (lon is alias for backward compatibility)
+  const lat = parseCoord(addrSelected.lat) ?? null;
+  const lng = parseCoord(addrSelected.lng) ?? parseCoord(addrSelected.lon) ?? null;
+
+  // Extract address components if available
+  const addressComponents = addrSelected.address || {};
+  const line1 = getString(addressComponents.line1) ?? null;
+  const ward = getString(addressComponents.ward) ?? null;
+  const district = getString(addressComponents.district) ?? null;
+  const city = getString(addressComponents.city) ?? null;
+  const state = getString(addressComponents.state) ?? null;
+  const postcode = getString(addressComponents.postcode) ?? null;
+  const country = getString(addressComponents.country) ?? null;
+  const countryCode = getString(addressComponents.country_code) ?? null;
 
   return {
     placeId,
     fullAddress: fullAddress || defaultAddress || null,
     lat,
     lng,
+    line1,
+    ward,
+    district,
+    city,
+    state,
+    postcode,
+    country,
+    countryCode,
   };
 }
 
@@ -231,14 +265,20 @@ export async function POST(req: Request) {
       created_by: user.id, // Track which user created the order
     };
 
+    // Add delivery coordinates if available (only if columns exist)
     if (addrParsed) {
       orderPayload.delivery_lat = addrParsed.lat;
       orderPayload.delivery_lng = addrParsed.lng;
       orderPayload.delivery_place_id = addrParsed.placeId;
+      // Note: delivery_addr_line1, delivery_ward, delivery_district, delivery_city, 
+      // delivery_state, delivery_postcode, delivery_country columns don't exist yet
     }
 
     const { data: order, error: orderErr } = await supabaseAdmin.from("orders").insert(orderPayload).select("*").single();
-    if (orderErr) return NextResponse.json({ ok: false, error: "Failed to create order", detail: orderErr }, { status: 500 });
+    if (orderErr) {
+      console.error("Order insert error:", orderErr);
+      return NextResponse.json({ ok: false, error: "Failed to create order", detail: orderErr.message || orderErr }, { status: 500 });
+    }
 
     // 3) create order_lines from quote + display_size
     const orderId = order.id as string;

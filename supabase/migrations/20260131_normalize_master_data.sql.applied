@@ -102,14 +102,20 @@ WHERE category_code IS NOT NULL
   AND category_code != UPPER(TRIM(category_code));
 
 -- Step 2.4: Add new FK constraint to categories
-ALTER TABLE public.products 
-  ADD CONSTRAINT fk_products_category_code 
-  FOREIGN KEY (category_code) 
-  REFERENCES public.categories(code) 
-  ON DELETE SET NULL
-  ON UPDATE CASCADE;
-
-RAISE NOTICE 'Added FK constraint: products.category_code -> categories.code';
+DO $$
+BEGIN
+  ALTER TABLE public.products 
+    ADD CONSTRAINT fk_products_category_code 
+    FOREIGN KEY (category_code) 
+    REFERENCES public.categories(code) 
+    ON DELETE SET NULL
+    ON UPDATE CASCADE;
+  
+  RAISE NOTICE 'Added FK constraint: products.category_code -> categories.code';
+EXCEPTION
+  WHEN duplicate_object THEN
+    RAISE NOTICE 'FK constraint already exists';
+END $$;
 
 -- =====================================================
 -- SECTION 3: SUBCATEGORY NORMALIZATION
@@ -171,12 +177,13 @@ WHERE p.menu_section IS NOT NULL
   )
 ON CONFLICT (category_code, name) DO NOTHING;
 
-RAISE NOTICE 'Created missing subcategories from products.menu_section';
+DO $$ BEGIN
+  RAISE NOTICE 'Created missing subcategories from products.menu_section';
+END $$;
 
 -- Step 3.4: Backfill products.subcategory_id by matching menu_section
 UPDATE public.products p
-SET subcategory_id = s.id,
-    updated_at = NOW()
+SET subcategory_id = s.id
 FROM public.subcategories s
 WHERE p.subcategory_id IS NULL
   AND p.category_code IS NOT NULL
@@ -185,7 +192,9 @@ WHERE p.subcategory_id IS NULL
   AND s.category_code = UPPER(TRIM(p.category_code))
   AND LOWER(TRIM(s.name)) = LOWER(TRIM(p.menu_section));
 
-RAISE NOTICE 'Backfilled products.subcategory_id from menu_section matching';
+DO $$ BEGIN
+  RAISE NOTICE 'Backfilled products.subcategory_id from menu_section matching';
+END $$;
 
 -- Add index for subcategory_id
 CREATE INDEX IF NOT EXISTS idx_products_subcategory_id ON public.products(subcategory_id);
@@ -206,7 +215,7 @@ BEGIN
     -- Map price_key from product_skus to size_key in product_variants
     -- PRICE_SMALL -> STD, PRICE_PHE -> SIZE_PHE, PRICE_LARGE -> SIZE_LA
     
-    INSERT INTO public.product_variants (product_id, size_key, sku_code, is_active, sort_order)
+    INSERT INTO public.product_variants (product_id, size_key, sku_code, sort_order)
     SELECT 
       ps.product_id,
       CASE 
@@ -218,7 +227,6 @@ BEGIN
         ELSE 'STD'::public.size_key
       END AS size_key,
       ps.sku_code,
-      COALESCE(ps.is_active, true) AS is_active,
       CASE 
         WHEN ps.price_key IN ('PRICE_SMALL', 'STD') THEN 1
         WHEN ps.price_key IN ('PRICE_PHE', 'SIZE_PHE') THEN 2
@@ -234,9 +242,7 @@ BEGIN
           AND pv.sku_code = ps.sku_code
       )
     ON CONFLICT (product_id, size_key) DO UPDATE SET
-      sku_code = EXCLUDED.sku_code,
-      is_active = EXCLUDED.is_active,
-      updated_at = NOW();
+      sku_code = EXCLUDED.sku_code;
     
     GET DIAGNOSTICS v_migrated_count = ROW_COUNT;
     RAISE NOTICE 'Migrated % SKUs from product_skus to product_variants', v_migrated_count;

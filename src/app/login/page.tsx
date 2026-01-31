@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/app/lib/supabaseClient";
+import { Button, Input, Card } from "@/app/components";
+import { colors, spacing, typography } from "@/app/lib/designTokens";
 
 function LoginForm() {
   const router = useRouter();
@@ -80,7 +82,7 @@ function LoginForm() {
 
   if (checkingSession) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui" }}>
+      <main style={{ padding: spacing['24'], fontFamily: typography.fontFamily.sans }}>
         <div>Checking session...</div>
       </main>
     );
@@ -89,91 +91,88 @@ function LoginForm() {
   return (
     <main
       style={{
-        padding: 24,
-        fontFamily: "system-ui",
+        padding: spacing['24'],
+        fontFamily: typography.fontFamily.sans,
         minHeight: "100vh",
         display: "grid",
         placeItems: "center",
+        backgroundColor: colors.bg.secondary,
       }}
     >
-      <div style={{ width: 420, border: "1px solid #333", borderRadius: 12, padding: 16 }}>
-        <h1 style={{ marginTop: 0, marginBottom: 10 }}>POS Login</h1>
+      <Card style={{ width: 420 }}>
+        <h1 style={{ 
+          marginTop: 0, 
+          marginBottom: spacing['16'], 
+          fontSize: typography.fontSize['2xl'],
+          fontWeight: typography.fontWeight.bold,
+          color: colors.text.primary,
+        }}>
+          POS Login
+        </h1>
         
         {errorParam === "domain_not_allowed" && (
           <div style={{ 
-            padding: 12, 
-            marginBottom: 12, 
-            background: "#fee", 
-            color: "#c00", 
-            borderRadius: 8,
-            fontSize: 14
+            padding: spacing['12'], 
+            marginBottom: spacing['16'], 
+            backgroundColor: `rgba(239, 68, 68, 0.1)`,
+            color: colors.status.error,
+            borderRadius: '8px',
+            fontSize: typography.fontSize.sm,
+            border: `1px solid ${colors.status.error}`,
           }}>
             Email domain not allowed. Contact administrator.
           </div>
         )}
 
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 10 }}>
-          <div>
-            <div style={{ marginBottom: 6, opacity: 0.8 }}>Email</div>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="email@domain.com"
-              autoComplete="email"
-              style={{ padding: 10, width: "100%" }}
-            />
-          </div>
+        <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: spacing['16'] }}>
+          <Input
+            label="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="email@domain.com"
+            autoComplete="email"
+            type="email"
+          />
 
-          <div>
-            <div style={{ marginBottom: 6, opacity: 0.8 }}>Password</div>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              type="password"
-              autoComplete="current-password"
-              style={{ padding: 10, width: "100%" }}
-            />
-          </div>
+          <Input
+            label="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            type="password"
+            autoComplete="current-password"
+          />
 
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            style={{
-              marginTop: 6,
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #334155",
-              background: loading ? "rgba(148,163,184,0.15)" : "rgba(148,163,184,0.25)",
-              cursor: loading ? "not-allowed" : "pointer",
-              fontWeight: 800,
-            }}
+            variant="primary"
+            fullWidth
+            style={{ marginTop: spacing['8'] }}
           >
             {loading ? "Logging in..." : "Login"}
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={onLogout}
             disabled={loading}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #334155",
-              background: "transparent",
-              cursor: loading ? "not-allowed" : "pointer",
-              fontWeight: 700,
-              opacity: 0.8,
-            }}
+            variant="secondary"
+            fullWidth
           >
             Logout (nếu đang login)
-          </button>
+          </Button>
 
-          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, lineHeight: 1.35 }}>
+          <div style={{ 
+            marginTop: spacing['4'], 
+            fontSize: typography.fontSize.xs, 
+            color: colors.text.tertiary,
+            lineHeight: typography.lineHeight.normal,
+          }}>
             Tạo user nhanh: Supabase Dashboard → Authentication → Users → Add user → set email & password.
           </div>
         </form>
-      </div>
+      </Card>
     </main>
   );
 }
@@ -185,3 +184,4 @@ export default function LoginPage() {
     </Suspense>
   );
 }
+

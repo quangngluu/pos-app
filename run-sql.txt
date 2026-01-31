@@ -1,0 +1,24 @@
+================================================================================
+MIGRATION INSTRUCTIONS
+================================================================================
+
+Your Supabase Project: xolpfbadtfwsurzsjxts
+
+OPTION 1 - Supabase Dashboard (EASIEST):
+1. Open: https://supabase.com/dashboard/project/xolpfbadtfwsurzsjxts/sql/new
+2. Copy ALL contents from: supabase/migrations/20260131_promotion_scope_targets.sql
+3. Paste into SQL Editor
+4. Click "Run" button (or press Cmd+Enter)
+
+OPTION 2 - Use Supabase CLI:
+1. Install: npm install -g supabase
+2. Run: supabase db push --project-ref xolpfbadtfwsurzsjxts
+
+================================================================================
+The migration will:
+- Create promotion_scope_targets table
+- Create promotion_rules table  
+- Backfill data from legacy tables
+- Add indexes
+- Show completion summary
+================================================================================

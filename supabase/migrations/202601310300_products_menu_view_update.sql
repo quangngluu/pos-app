@@ -42,10 +42,10 @@ END $$;
 -- Replace CHECK constraint on products.category_code with FK to categories
 DO $$
 DECLARE
-  constraint_name TEXT;
+  v_constraint_name TEXT;
 BEGIN
   -- Drop any CHECK constraints on category_code
-  FOR constraint_name IN 
+  FOR v_constraint_name IN 
     SELECT con.conname
     FROM pg_constraint con
     INNER JOIN pg_class rel ON rel.oid = con.conrelid
@@ -54,8 +54,8 @@ BEGIN
       AND con.contype = 'c'
       AND att.attname = 'category_code'
   LOOP
-    EXECUTE format('ALTER TABLE public.products DROP CONSTRAINT IF EXISTS %I', constraint_name);
-    RAISE NOTICE 'Dropped CHECK constraint: %', constraint_name;
+    EXECUTE format('ALTER TABLE public.products DROP CONSTRAINT IF EXISTS %I', v_constraint_name);
+    RAISE NOTICE 'Dropped CHECK constraint: %', v_constraint_name;
   END LOOP;
   
   -- Drop old FK if exists with different name
@@ -118,10 +118,10 @@ legacy_prices AS (
   SELECT 
     pp.product_id,
     CASE 
-      WHEN pp.price_key = 'PRICE_SMALL' THEN 'STD'
-      WHEN pp.price_key = 'PRICE_PHE' THEN 'SIZE_PHE'
-      WHEN pp.price_key = 'PRICE_LARGE' THEN 'SIZE_LA'
-      ELSE pp.price_key
+      WHEN pp.price_key = 'PRICE_SMALL' THEN 'STD'::public.size_key
+      WHEN pp.price_key = 'PRICE_PHE' THEN 'SIZE_PHE'::public.size_key
+      WHEN pp.price_key = 'PRICE_LARGE' THEN 'SIZE_LA'::public.size_key
+      ELSE 'STD'::public.size_key
     END AS size_key,
     pp.price_vat_incl
   FROM public.product_prices pp

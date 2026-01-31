@@ -32,19 +32,22 @@ export type QuoteLineResult = {
   unit_price_after?: number;
   line_total_before?: number;
   line_total_after?: number;
-  adjustments?: { type: string; amount: number }[];
+  adjustments?: { type: string; amount: number; details?: string }[];
   missing_price?: boolean;
+  is_free_item?: boolean; // Flag for free gift items
   // Debug fields (dev mode only)
   debug?: {
     product_category?: string | null;
     normalized_category?: string;
     is_eligible_for_promo?: boolean;
+    variant_id?: string;
   };
 };
 
 export type QuoteResult = {
   ok: boolean;
   lines: QuoteLineResult[];
+  free_items?: QuoteLineResult[]; // Separate array for free gift items
   totals: {
     subtotal_before: number;
     discount_total: number;
@@ -54,8 +57,37 @@ export type QuoteResult = {
     free_upsize_applied?: boolean;
     discount_percent?: number;
     drink_qty?: number;
+    rules_applied?: string[]; // Track which rules were applied
+    conditions_met?: Record<string, boolean>; // Debug: which conditions passed
   };
   error?: string;
+};
+
+// Rule contract types
+type PromotionConditions = {
+  min_order_value?: number;
+  min_qty?: number;
+  min_eligible_qty?: number;
+};
+
+type PromotionAction = 
+  | { type: 'PERCENT_OFF'; percent: number; apply_to: 'ELIGIBLE_LINES' }
+  | { type: 'AMOUNT_OFF'; amount: number; apply_to: 'ORDER_TOTAL' | 'ELIGIBLE_LINES'; allocation?: 'PROPORTIONAL' | 'EQUAL' }
+  | { type: 'AMOUNT_OFF_PER_ITEM'; amount: number; max_items?: number }
+  | { type: 'FREE_ITEM'; variant_id: string; qty: number; max_per_order?: number };
+
+type PromotionRule = {
+  id: string;
+  promotion_code: string;
+  rule_order: number;
+  conditions: PromotionConditions | null;
+  actions: PromotionAction[];
+};
+
+type ScopeTarget = {
+  target_type: 'CATEGORY' | 'SUBCATEGORY' | 'PRODUCT' | 'VARIANT';
+  target_id: string;
+  is_included: boolean;
 };
 
 /* =========================
@@ -275,42 +307,123 @@ export async function quoteOrder(input: {
     }
 
     /* =========================
-       LOAD PROMOTION SCOPES
+       LOAD PROMOTION RULES & UNIFIED SCOPES
     ========================= */
-    let includedCategories: string[] = [];
-    let excludedCategories: string[] = [];
-    let includeProductIds: string[] = [];
+    let scopeTargets: ScopeTarget[] = [];
+    let promotionRules: PromotionRule[] = [];
 
     if (promo && promo.code) {
-      // Load CATEGORY scopes
-      const { data: scopes } = await supabaseAdmin
-        .from("promotion_scopes")
-        .select("scope_type, category, is_included")
+      // Try new unified scope table first
+      const scopesResult = await supabaseAdmin
+        .from("promotion_scope_targets")
+        .select("target_type, target_id, is_included")
         .eq("promotion_code", promo.code);
 
-      if (scopes && scopes.length > 0) {
-        scopes.forEach(s => {
-          if (s.scope_type === "CATEGORY") {
-            if (s.is_included) {
-              includedCategories.push(s.category);
-            } else {
-              excludedCategories.push(s.category);
+      if (scopesResult.data && scopesResult.data.length > 0) {
+        scopeTargets = scopesResult.data as ScopeTarget[];
+      } else {
+        // Fallback to legacy tables for backward compatibility
+        // Load CATEGORY scopes from promotion_scopes
+        const { data: legacyScopes } = await supabaseAdmin
+          .from("promotion_scopes")
+          .select("scope_type, category, is_included")
+          .eq("promotion_code", promo.code);
+
+        if (legacyScopes && legacyScopes.length > 0) {
+          legacyScopes.forEach(s => {
+            if (s.scope_type === "CATEGORY") {
+              scopeTargets.push({
+                target_type: "CATEGORY",
+                target_id: s.category,
+                is_included: s.is_included,
+              });
             }
-          }
-        });
+          });
+        }
+
+        // Load PRODUCT targets from promotion_targets
+        const { data: legacyTargets } = await supabaseAdmin
+          .from("promotion_targets")
+          .select("product_id, is_enabled")
+          .eq("promotion_code", promo.code);
+
+        if (legacyTargets && legacyTargets.length > 0) {
+          legacyTargets.forEach(t => {
+            scopeTargets.push({
+              target_type: "PRODUCT",
+              target_id: t.product_id,
+              is_included: t.is_enabled,
+            });
+          });
+        }
+
+        // Load VARIANT targets from promotion_target_variants
+        const { data: legacyVariants } = await supabaseAdmin
+          .from("promotion_target_variants")
+          .select("variant_id, is_enabled")
+          .eq("promotion_code", promo.code);
+
+        if (legacyVariants && legacyVariants.length > 0) {
+          legacyVariants.forEach(v => {
+            scopeTargets.push({
+              target_type: "VARIANT",
+              target_id: v.variant_id,
+              is_included: v.is_enabled,
+            });
+          });
+        }
       }
 
-      // Load PRODUCT targets (is_enabled=true acts as include list)
-      const { data: targets } = await supabaseAdmin
-        .from("promotion_targets")
-        .select("product_id")
+      // Load promotion rules
+      const rulesResult = await supabaseAdmin
+        .from("promotion_rules")
+        .select("*")
         .eq("promotion_code", promo.code)
-        .eq("is_enabled", true);
+        .order("rule_order", { ascending: true });
 
-      if (targets && targets.length > 0) {
-        includeProductIds = targets.map(t => t.product_id);
+      if (rulesResult.data && rulesResult.data.length > 0) {
+        promotionRules = rulesResult.data.map(r => ({
+          id: r.id,
+          promotion_code: r.promotion_code,
+          rule_order: r.rule_order,
+          conditions: r.conditions as PromotionConditions | null,
+          actions: (Array.isArray(r.actions) ? r.actions : [r.actions]) as PromotionAction[],
+        }));
       }
     }
+
+    // Build include/exclude sets from unified scopes
+    const includedCategories = scopeTargets
+      .filter(t => t.target_type === "CATEGORY" && t.is_included)
+      .map(t => t.target_id);
+    
+    const excludedCategories = scopeTargets
+      .filter(t => t.target_type === "CATEGORY" && !t.is_included)
+      .map(t => t.target_id);
+    
+    const includedSubcategories = scopeTargets
+      .filter(t => t.target_type === "SUBCATEGORY" && t.is_included)
+      .map(t => t.target_id);
+    
+    const excludedSubcategories = scopeTargets
+      .filter(t => t.target_type === "SUBCATEGORY" && !t.is_included)
+      .map(t => t.target_id);
+    
+    const includeProductIds = scopeTargets
+      .filter(t => t.target_type === "PRODUCT" && t.is_included)
+      .map(t => t.target_id);
+    
+    const excludeProductIds = scopeTargets
+      .filter(t => t.target_type === "PRODUCT" && !t.is_included)
+      .map(t => t.target_id);
+    
+    const includeVariantIds = scopeTargets
+      .filter(t => t.target_type === "VARIANT" && t.is_included)
+      .map(t => t.target_id);
+    
+    const excludeVariantIds = scopeTargets
+      .filter(t => t.target_type === "VARIANT" && !t.is_included)
+      .map(t => t.target_id);
 
     const normalizedIncluded = includedCategories
       .map(normalizeCategory)
@@ -320,16 +433,35 @@ export async function quoteOrder(input: {
       .map(normalizeCategory)
       .filter(c => c !== "UNKNOWN");
 
-    // BUSINESS RULE: If NO included scopes (category or product), apply NONE
-    const hasIncludeScope = normalizedIncluded.length > 0 || includeProductIds.length > 0;
+    // BUSINESS RULE: If NO included scopes (any type), apply NONE
+    const hasIncludeScope = 
+      includedCategories.length > 0 || 
+      includedSubcategories.length > 0 || 
+      includeProductIds.length > 0 || 
+      includeVariantIds.length > 0;
     
-    const discountRate =
+    // Legacy discount rate for backward compatibility
+    const legacyDiscountRate =
       promo?.promo_type === "DISCOUNT" && hasIncludeScope
         ? Number(promo.percent_off ?? 0) / 100
         : 0;
     
     // Dev mode flag
     const isDev = process.env.NODE_ENV !== "production";
+
+    // Build variant map for eligibility checking (product_id -> variant_id)
+    const variantMap = new Map<string, string>(); // key: product_id|size_key -> variant_id
+    (variantsResult.data ?? []).forEach(v => {
+      variantMap.set(key(v.product_id, v.size_key), v.id);
+    });
+
+    // Build product subcategory map
+    const productSubcategoryMap = new Map<string, string>();
+    (productsResult.data ?? []).forEach(p => {
+      if ((p as any).subcategory_id) {
+        productSubcategoryMap.set(p.id, (p as any).subcategory_id);
+      }
+    });
 
     // Debug logging (dev/non-prod only)
     if (isDev && promo) {
@@ -339,44 +471,77 @@ export async function quoteOrder(input: {
         includedCategories: normalizedIncluded,
         excludedCategories: normalizedExcluded,
         includeProductIds: includeProductIds.length,
+        includeVariantIds: includeVariantIds.length,
         hasIncludeScope,
-        discountRate: discountRate * 100 + "%",
+        rulesCount: promotionRules.length,
+        legacyDiscountRate: legacyDiscountRate * 100 + "%",
       });
     }
 
     /* =========================
-       Price each line
+       Check Line Eligibility
     ========================= */
     let subtotalBefore = 0;
     let discountTotal = 0;
     let eligibleLineIds: string[] = [];
 
-    // Helper: check if line is eligible for promotion
-    const isLineEligible = (productId: string, productCategory: string): boolean => {
+    // Helper: check if line is eligible for promotion (multi-level checking)
+    const isLineEligible = (
+      productId: string, 
+      productCategory: string, 
+      priceKey: string,
+      subcategoryId?: string
+    ): boolean => {
       if (!hasIncludeScope) return false; // No scopes = no eligibility
       if (productCategory === "UNKNOWN") return false; // Unknown category not eligible
 
-      // Check PRODUCT include list
-      if (includeProductIds.includes(productId)) {
-        // Check if excluded by category
-        return !normalizedExcluded.includes(productCategory);
+      // Get variant ID for this line
+      const variantId = variantMap.get(key(productId, priceKey));
+
+      // Check VARIANT-level targeting (most specific)
+      if (variantId) {
+        if (includeVariantIds.includes(variantId)) {
+          return !excludeVariantIds.includes(variantId); // Include unless explicitly excluded
+        }
+        if (excludeVariantIds.includes(variantId)) {
+          return false; // Explicitly excluded
+        }
       }
 
-      // Check CATEGORY include list
+      // Check PRODUCT-level targeting
+      if (includeProductIds.includes(productId)) {
+        return !excludeProductIds.includes(productId); // Include unless explicitly excluded
+      }
+      if (excludeProductIds.includes(productId)) {
+        return false; // Explicitly excluded
+      }
+
+      // Check SUBCATEGORY-level targeting
+      if (subcategoryId) {
+        if (includedSubcategories.includes(subcategoryId)) {
+          return !excludedSubcategories.includes(subcategoryId);
+        }
+        if (excludedSubcategories.includes(subcategoryId)) {
+          return false;
+        }
+      }
+
+      // Check CATEGORY-level targeting (least specific)
       const isIncluded = normalizedIncluded.includes(productCategory);
       const isExcluded = normalizedExcluded.includes(productCategory);
       return isIncluded && !isExcluded;
     };
 
-    // For FREE_UPSIZE: count qty only for eligible lines
+    // For FREE_UPSIZE: count qty only for eligible lines (backward compatibility)
     const eligibleDrinkQty = lines.reduce((s, l) => {
       const product = productMap.get(l.product_id);
       const cat = normalizeCategory(product?.category);
+      const subcatId = productSubcategoryMap.get(l.product_id);
       if (cat !== "DRINK") return s;
       
       // If promotion has scopes, only count eligible drinks
       if (promo?.code === "FREE_UPSIZE_5" && hasIncludeScope) {
-        return isLineEligible(l.product_id, cat) ? s + l.qty : s;
+        return isLineEligible(l.product_id, cat, l.price_key, subcatId) ? s + l.qty : s;
       }
       // No scopes: count all drinks (backward compatible)
       return s + l.qty;
@@ -387,14 +552,19 @@ export async function quoteOrder(input: {
       promo.promo_type === "RULE" &&
       eligibleDrinkQty >= (promo.min_qty ?? 5);
 
+    /* =========================
+       Price each line (before rules)
+    ========================= */
     const outLines = lines.map(l => {
       const product = productMap.get(l.product_id);
       const rawCategory = product?.category; // Already resolved from category_code ?? category
       const productCategory = normalizeCategory(rawCategory);
+      const subcategoryId = productSubcategoryMap.get(l.product_id);
       const isDrink = productCategory === "DRINK";
+      const variantId = variantMap.get(key(l.product_id, l.price_key));
 
       // Check line eligibility for promotion
-      const eligibleForPromo = promo ? isLineEligible(l.product_id, productCategory) : false;
+      const eligibleForPromo = promo ? isLineEligible(l.product_id, productCategory, l.price_key, subcategoryId) : false;
       if (eligibleForPromo) {
         eligibleLineIds.push(l.line_id);
       }
@@ -402,7 +572,7 @@ export async function quoteOrder(input: {
       let displayKey = l.price_key;
       let chargedKey = l.price_key;
 
-      // FREE_UPSIZE: display LA, charge PHE (only if eligible)
+      // FREE_UPSIZE: display LA, charge PHE (only if eligible) - BACKWARD COMPATIBILITY
       const hasBothSizes =
         priceMap.has(key(l.product_id, "SIZE_PHE")) &&
         priceMap.has(key(l.product_id, "SIZE_LA"));
@@ -430,32 +600,18 @@ export async function quoteOrder(input: {
         };
       }
 
-      // DISCOUNT: check eligibility
-      const eligibleDiscount = discountRate > 0 && eligibleForPromo;
-
-      const unitAfter = eligibleDiscount
-        ? money(unitCharged * (1 - discountRate))
-        : unitCharged;
-
       const lineBefore = unitBefore * l.qty;
-      const lineAfter = unitAfter * l.qty;
-
+      
       subtotalBefore += lineBefore;
-      discountTotal += lineBefore - lineAfter;
 
-      const adjustments = [];
+      const adjustments: { type: string; amount: number; details?: string }[] = [];
 
+      // FREE_UPSIZE adjustment (backward compatibility)
       if (displayKey !== chargedKey) {
         adjustments.push({
           type: "FREE_UPSIZE",
           amount: (unitBefore - unitCharged) * l.qty,
-        });
-      }
-
-      if (eligibleDiscount) {
-        adjustments.push({
-          type: "DISCOUNT",
-          amount: (unitCharged - unitAfter) * l.qty,
+          details: "Legacy FREE_UPSIZE rule"
         });
       }
 
@@ -466,9 +622,9 @@ export async function quoteOrder(input: {
         display_price_key: displayKey,
         charged_price_key: chargedKey,
         unit_price_before: unitBefore,
-        unit_price_after: unitAfter,
+        unit_price_after: unitCharged, // Will be updated by rules
         line_total_before: lineBefore,
-        line_total_after: lineAfter,
+        line_total_after: lineBefore, // Will be updated by rules
         adjustments,
       };
 
@@ -478,11 +634,221 @@ export async function quoteOrder(input: {
           product_category: rawCategory,
           normalized_category: productCategory,
           is_eligible_for_promo: eligibleForPromo,
+          variant_id: variantId,
         };
       }
 
       return result;
     });
+
+    /* =========================
+       Apply Promotion Rules
+    ========================= */
+    const rulesApplied: string[] = [];
+    const conditionsMet: Record<string, boolean> = {};
+    const freeItemsToAdd: QuoteLineResult[] = [];
+
+    if (promo && promotionRules.length > 0) {
+      // Calculate eligible lines total and qty for condition checking
+      const eligibleLines = outLines.filter(l => eligibleLineIds.includes(l.line_id));
+      const eligibleTotal = eligibleLines.reduce((sum, l) => sum + (l.line_total_after ?? 0), 0);
+      const eligibleQty = eligibleLines.reduce((sum, l) => sum + l.qty, 0);
+      const totalQty = outLines.reduce((sum, l) => sum + l.qty, 0);
+
+      for (const rule of promotionRules) {
+        // Evaluate conditions
+        let conditionsPassed = true;
+        const conditions = rule.conditions || {};
+
+        if (conditions.min_order_value) {
+          const passed = subtotalBefore >= conditions.min_order_value;
+          conditionsMet[`min_order_value_${conditions.min_order_value}`] = passed;
+          conditionsPassed = conditionsPassed && passed;
+        }
+
+        if (conditions.min_qty) {
+          const passed = totalQty >= conditions.min_qty;
+          conditionsMet[`min_qty_${conditions.min_qty}`] = passed;
+          conditionsPassed = conditionsPassed && passed;
+        }
+
+        if (conditions.min_eligible_qty) {
+          const passed = eligibleQty >= conditions.min_eligible_qty;
+          conditionsMet[`min_eligible_qty_${conditions.min_eligible_qty}`] = passed;
+          conditionsPassed = conditionsPassed && passed;
+        }
+
+        if (!conditionsPassed) {
+          continue; // Skip this rule if conditions not met
+        }
+
+        // Apply actions
+        for (const action of rule.actions) {
+          if (action.type === "PERCENT_OFF" && action.apply_to === "ELIGIBLE_LINES") {
+            const discountRate = action.percent / 100;
+            eligibleLines.forEach(line => {
+              const currentPrice = line.unit_price_after ?? 0;
+              const discountedPrice = money(currentPrice * (1 - discountRate));
+              const discountAmount = (currentPrice - discountedPrice) * line.qty;
+              
+              line.unit_price_after = discountedPrice;
+              line.line_total_after = discountedPrice * line.qty;
+              line.adjustments = line.adjustments || [];
+              line.adjustments.push({
+                type: "PERCENT_OFF",
+                amount: discountAmount,
+                details: `${action.percent}% off eligible items`
+              });
+              
+              discountTotal += discountAmount;
+            });
+            
+            rulesApplied.push(`PERCENT_OFF_${action.percent}`);
+          }
+
+          if (action.type === "AMOUNT_OFF") {
+            const totalDiscount = action.amount;
+            
+            if (action.apply_to === "ORDER_TOTAL") {
+              // Distribute discount proportionally across ALL lines
+              const allocation = action.allocation || "PROPORTIONAL";
+              
+              if (allocation === "PROPORTIONAL") {
+                outLines.forEach(line => {
+                  const lineRatio = (line.line_total_after ?? 0) / subtotalBefore;
+                  const lineDiscount = money(totalDiscount * lineRatio);
+                  const newTotal = Math.max(0, (line.line_total_after ?? 0) - lineDiscount);
+                  const newUnitPrice = line.qty > 0 ? money(newTotal / line.qty) : 0;
+                  
+                  line.unit_price_after = newUnitPrice;
+                  line.line_total_after = newTotal;
+                  line.adjustments = line.adjustments || [];
+                  line.adjustments.push({
+                    type: "AMOUNT_OFF",
+                    amount: lineDiscount,
+                    details: `Proportional discount from order total`
+                  });
+                  
+                  discountTotal += lineDiscount;
+                });
+              }
+            } else if (action.apply_to === "ELIGIBLE_LINES") {
+              // Distribute discount proportionally across eligible lines only
+              const allocation = action.allocation || "PROPORTIONAL";
+              
+              if (allocation === "PROPORTIONAL" && eligibleTotal > 0) {
+                eligibleLines.forEach(line => {
+                  const lineRatio = (line.line_total_after ?? 0) / eligibleTotal;
+                  const lineDiscount = money(totalDiscount * lineRatio);
+                  const newTotal = Math.max(0, (line.line_total_after ?? 0) - lineDiscount);
+                  const newUnitPrice = line.qty > 0 ? money(newTotal / line.qty) : 0;
+                  
+                  line.unit_price_after = newUnitPrice;
+                  line.line_total_after = newTotal;
+                  line.adjustments = line.adjustments || [];
+                  line.adjustments.push({
+                    type: "AMOUNT_OFF",
+                    amount: lineDiscount,
+                    details: `Proportional discount on eligible items`
+                  });
+                  
+                  discountTotal += lineDiscount;
+                });
+              }
+            }
+            
+            rulesApplied.push(`AMOUNT_OFF_${action.amount}`);
+          }
+
+          if (action.type === "AMOUNT_OFF_PER_ITEM") {
+            const discountPerItem = action.amount;
+            const maxItems = action.max_items || Infinity;
+            let itemsDiscounted = 0;
+            
+            for (const line of eligibleLines) {
+              if (itemsDiscounted >= maxItems) break;
+              
+              const qtyToDiscount = Math.min(line.qty, maxItems - itemsDiscounted);
+              const lineDiscount = discountPerItem * qtyToDiscount;
+              const newTotal = Math.max(0, (line.line_total_after ?? 0) - lineDiscount);
+              const newUnitPrice = line.qty > 0 ? money(newTotal / line.qty) : 0;
+              
+              line.unit_price_after = newUnitPrice;
+              line.line_total_after = newTotal;
+              line.adjustments = line.adjustments || [];
+              line.adjustments.push({
+                type: "AMOUNT_OFF_PER_ITEM",
+                amount: lineDiscount,
+                details: `${money(discountPerItem)} off per item (${qtyToDiscount} items)`
+              });
+              
+              discountTotal += lineDiscount;
+              itemsDiscounted += qtyToDiscount;
+            }
+            
+            rulesApplied.push(`AMOUNT_OFF_PER_ITEM_${action.amount}`);
+          }
+
+          if (action.type === "FREE_ITEM") {
+            const maxPerOrder = action.max_per_order || 1;
+            const qtyToAdd = Math.min(action.qty, maxPerOrder);
+            
+            // Look up the free item variant
+            const freeVariant = (variantsResult.data ?? []).find(v => v.id === action.variant_id);
+            
+            if (freeVariant) {
+              const freeProductId = freeVariant.product_id;
+              const freePriceKey = freeVariant.size_key;
+              const freePrice = priceMap.get(key(freeProductId, freePriceKey)) || 0;
+              
+              freeItemsToAdd.push({
+                line_id: `free-${action.variant_id}-${Date.now()}`,
+                product_id: freeProductId,
+                qty: qtyToAdd,
+                display_price_key: freePriceKey,
+                charged_price_key: freePriceKey,
+                unit_price_before: freePrice,
+                unit_price_after: 0,
+                line_total_before: freePrice * qtyToAdd,
+                line_total_after: 0,
+                is_free_item: true,
+                adjustments: [{
+                  type: "FREE_ITEM",
+                  amount: freePrice * qtyToAdd,
+                  details: `Free gift item (${qtyToAdd}x)`
+                }],
+              });
+              
+              discountTotal += freePrice * qtyToAdd;
+            }
+            
+            rulesApplied.push(`FREE_ITEM_${action.variant_id}`);
+          }
+        }
+      }
+    }
+
+    // Legacy DISCOUNT support (if no rules defined)
+    if (promo && promotionRules.length === 0 && legacyDiscountRate > 0) {
+      const eligibleLines = outLines.filter(l => eligibleLineIds.includes(l.line_id));
+      
+      eligibleLines.forEach(line => {
+        const currentPrice = line.unit_price_after ?? 0;
+        const discountedPrice = money(currentPrice * (1 - legacyDiscountRate));
+        const discountAmount = (currentPrice - discountedPrice) * line.qty;
+        
+        line.unit_price_after = discountedPrice;
+        line.line_total_after = discountedPrice * line.qty;
+        line.adjustments = line.adjustments || [];
+        line.adjustments.push({
+          type: "DISCOUNT",
+          amount: discountAmount,
+          details: "Legacy DISCOUNT promotion"
+        });
+        
+        discountTotal += discountAmount;
+      });
+    }
 
     // Debug logging (dev/non-prod only)
     if (isDev && promo) {
@@ -492,24 +858,32 @@ export async function quoteOrder(input: {
         subtotalBefore,
         discountTotal,
         grandTotal: subtotalBefore - discountTotal,
+        rulesApplied,
+        freeItemsCount: freeItemsToAdd.length,
       });
     }
+
+    // Calculate final grand total
+    const finalGrandTotal = subtotalBefore - discountTotal;
 
     return {
       ok: true,
       lines: outLines,
+      free_items: freeItemsToAdd.length > 0 ? freeItemsToAdd : undefined,
       totals: {
         subtotal_before: subtotalBefore,
         discount_total: discountTotal,
-        grand_total: subtotalBefore - discountTotal,
+        grand_total: finalGrandTotal,
       },
       meta: {
         free_upsize_applied: freeUpsize,
         discount_percent:
           promo?.promo_type === "DISCOUNT" && hasIncludeScope
             ? (promo?.percent_off ?? 0)
-            : 0,
+            : promotionRules.length > 0 ? 0 : 0,
         drink_qty: eligibleDrinkQty,
+        rules_applied: rulesApplied.length > 0 ? rulesApplied : undefined,
+        conditions_met: Object.keys(conditionsMet).length > 0 ? conditionsMet : undefined,
       },
     };
   } catch (e: any) {

@@ -1,6 +1,82 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { Button, Badge } from "@/app/components";
+import { colors, spacing, typography, borderRadius, shadows } from "@/app/lib/designTokens";
+
+const sharedStyles = {
+  input: {
+    width: "100%",
+    padding: `${spacing['10']} ${spacing['12']}`,
+    background: colors.bg.secondary,
+    border: `1px solid ${colors.border.light}`,
+    borderRadius: borderRadius.md,
+    color: colors.text.primary,
+    fontSize: typography.fontSize.base,
+  },
+  disabledInput: {
+    width: "100%",
+    padding: `${spacing['10']} ${spacing['12']}`,
+    background: colors.bg.tertiary,
+    border: `1px solid ${colors.border.light}`,
+    borderRadius: borderRadius.md,
+    color: colors.text.tertiary,
+    fontSize: typography.fontSize.base,
+    cursor: "not-allowed",
+  },
+  primaryButton: {
+    padding: `${spacing['10']} ${spacing['16']}`,
+    background: colors.interactive.primary,
+    border: `1px solid ${colors.interactive.primary}`,
+    borderRadius: borderRadius.md,
+    color: colors.text.inverse,
+    cursor: "pointer",
+    fontWeight: typography.fontWeight.semibold,
+  },
+  secondaryButton: {
+    padding: `${spacing['10']} ${spacing['16']}`,
+    background: colors.bg.secondary,
+    border: `1px solid ${colors.border.light}`,
+    borderRadius: borderRadius.md,
+    color: colors.text.primary,
+    cursor: "pointer",
+    fontWeight: typography.fontWeight.medium,
+  },
+  tableHeader: {
+    padding: spacing['12'],
+    textAlign: "left" as const,
+    color: colors.text.secondary,
+    fontWeight: typography.fontWeight.medium,
+    fontSize: typography.fontSize.sm,
+    borderBottom: `1px solid ${colors.border.light}`,
+    background: colors.bg.secondary,
+  },
+  tableRow: {
+    borderBottom: `1px solid ${colors.border.light}`,
+  },
+  modalCard: {
+    background: colors.bg.primary,
+    padding: spacing['24'],
+    borderRadius: borderRadius.lg,
+    border: `1px solid ${colors.border.light}`,
+    boxShadow: shadows.lg,
+    maxHeight: "90vh",
+    overflowY: "auto" as const,
+  },
+  label: {
+    display: "block",
+    marginBottom: 4,
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+  },
+  labelSemibold: {
+    display: "block",
+    marginBottom: 8,
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    fontWeight: typography.fontWeight.medium,
+  },
+};
 
 type Store = {
   id: string;
@@ -67,51 +143,47 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 600, marginBottom: 24 }}>Admin Panel</h1>
+    <div style={{ padding: spacing['24'], maxWidth: 1400, margin: "0 auto", background: colors.bg.primary }}>
+      <h1 style={{ fontSize: typography.fontSize['3xl'], fontWeight: typography.fontWeight.semibold, marginBottom: spacing['24'], color: colors.text.primary }}>Admin Panel</h1>
 
       {error && (
         <div
           style={{
-            padding: 12,
-            marginBottom: 16,
-            background: "rgba(239, 68, 68, 0.1)",
-            border: "1px solid rgba(239, 68, 68, 0.3)",
-            borderRadius: 6,
-            color: "#ef4444",
+            padding: spacing['12'],
+            marginBottom: spacing['16'],
+            background: colors.status.errorLight,
+            border: `1px solid ${colors.status.error}`,
+            borderRadius: borderRadius.base,
+            color: colors.status.error,
           }}
         >
           {error}
-          <button
+          <Button
             onClick={() => setError(null)}
+            variant="danger"
+            size="sm"
             style={{
-              marginLeft: 12,
-              padding: "4px 8px",
-              background: "transparent",
-              border: "1px solid rgba(239, 68, 68, 0.5)",
-              borderRadius: 4,
-              color: "#ef4444",
-              cursor: "pointer",
+              marginLeft: spacing['12'],
             }}
           >
             Dismiss
-          </button>
+          </Button>
         </div>
       )}
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: "1px solid #333" }}>
+      <div style={{ display: "flex", gap: spacing['8'], marginBottom: spacing['24'], borderBottom: `1px solid ${colors.border.light}` }}>
         <button
           onClick={() => setActiveTab("stores")}
           style={{
-            padding: "12px 24px",
-            background: activeTab === "stores" ? "#2a2a2a" : "transparent",
+            padding: `${spacing['12']} ${spacing['24']}`,
+            background: activeTab === "stores" ? colors.bg.secondary : "transparent",
             border: "none",
-            borderBottom: activeTab === "stores" ? "2px solid #3b82f6" : "2px solid transparent",
-            color: activeTab === "stores" ? "#fff" : "#888",
+            borderBottom: activeTab === "stores" ? `2px solid ${colors.interactive.primary}` : "2px solid transparent",
+            color: activeTab === "stores" ? colors.text.primary : colors.text.tertiary,
             cursor: "pointer",
-            fontSize: 16,
-            fontWeight: 500,
+            fontSize: typography.fontSize.base,
+            fontWeight: typography.fontWeight.medium,
           }}
         >
           Stores
@@ -119,14 +191,14 @@ export default function AdminPage() {
         <button
           onClick={() => setActiveTab("promotions")}
           style={{
-            padding: "12px 24px",
-            background: activeTab === "promotions" ? "#2a2a2a" : "transparent",
+            padding: `${spacing['12']} ${spacing['24']}`,
+            background: activeTab === "promotions" ? colors.bg.secondary : "transparent",
             border: "none",
-            borderBottom: activeTab === "promotions" ? "2px solid #3b82f6" : "2px solid transparent",
-            color: activeTab === "promotions" ? "#fff" : "#888",
+            borderBottom: activeTab === "promotions" ? `2px solid ${colors.interactive.primary}` : "2px solid transparent",
+            color: activeTab === "promotions" ? colors.text.primary : colors.text.tertiary,
             cursor: "pointer",
-            fontSize: 16,
-            fontWeight: 500,
+            fontSize: typography.fontSize.base,
+            fontWeight: typography.fontWeight.medium,
           }}
         >
           Promotions
@@ -134,14 +206,14 @@ export default function AdminPage() {
         <button
           onClick={() => setActiveTab("products")}
           style={{
-            padding: "12px 24px",
-            background: activeTab === "products" ? "#2a2a2a" : "transparent",
+            padding: `${spacing['12']} ${spacing['24']}`,
+            background: activeTab === "products" ? colors.bg.secondary : "transparent",
             border: "none",
-            borderBottom: activeTab === "products" ? "2px solid #3b82f6" : "2px solid transparent",
-            color: activeTab === "products" ? "#fff" : "#888",
+            borderBottom: activeTab === "products" ? `2px solid ${colors.interactive.primary}` : "2px solid transparent",
+            color: activeTab === "products" ? colors.text.primary : colors.text.tertiary,
             cursor: "pointer",
-            fontSize: 16,
-            fontWeight: 500,
+            fontSize: typography.fontSize.base,
+            fontWeight: typography.fontWeight.medium,
           }}
         >
           Products
@@ -149,14 +221,14 @@ export default function AdminPage() {
         <button
           onClick={() => setActiveTab("categories")}
           style={{
-            padding: "12px 24px",
-            background: activeTab === "categories" ? "#2a2a2a" : "transparent",
+            padding: `${spacing['12']} ${spacing['24']}`,
+            background: activeTab === "categories" ? colors.bg.secondary : "transparent",
             border: "none",
-            borderBottom: activeTab === "categories" ? "2px solid #3b82f6" : "2px solid transparent",
-            color: activeTab === "categories" ? "#fff" : "#888",
+            borderBottom: activeTab === "categories" ? `2px solid ${colors.interactive.primary}` : "2px solid transparent",
+            color: activeTab === "categories" ? colors.text.primary : colors.text.tertiary,
             cursor: "pointer",
-            fontSize: 16,
-            fontWeight: 500,
+            fontSize: typography.fontSize.base,
+            fontWeight: typography.fontWeight.medium,
           }}
         >
           Categories
@@ -287,7 +359,7 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: spacing['12'], marginBottom: spacing['16'] }}>
         <input
           type="text"
           placeholder="Search stores..."
@@ -295,23 +367,24 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
           onChange={(e) => setSearch(e.target.value)}
           style={{
             flex: 1,
-            padding: "8px 12px",
-            background: "#2a2a2a",
-            border: "1px solid #444",
-            borderRadius: 6,
-            color: "#fff",
+            padding: `${spacing['8']} ${spacing['12']}`,
+            background: colors.bg.secondary,
+            border: `1px solid ${colors.border.light}`,
+            borderRadius: borderRadius.base,
+            color: colors.text.primary,
+            fontSize: typography.fontSize.base,
           }}
         />
         <button
           onClick={handleCreate}
           style={{
-            padding: "8px 16px",
-            background: "#3b82f6",
-            border: "none",
-            borderRadius: 6,
-            color: "#fff",
+            padding: `${spacing['8']} ${spacing['16']}`,
+            background: colors.interactive.primary,
+            border: `1px solid ${colors.interactive.primary}`,
+            borderRadius: borderRadius.base,
+            color: colors.text.inverse,
             cursor: "pointer",
-            fontWeight: 500,
+            fontWeight: typography.fontWeight.semibold,
           }}
         >
           + Create Store
@@ -319,35 +392,35 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
       </div>
 
       {loading ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#888" }}>Loading...</div>
+        <div style={{ padding: spacing['24'], textAlign: "center", color: colors.text.secondary }}>Loading...</div>
       ) : stores.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#888" }}>No stores found</div>
+        <div style={{ padding: spacing['24'], textAlign: "center", color: colors.text.secondary }}>No stores found</div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto", background: colors.bg.secondary, border: `1px solid ${colors.border.light}`, borderRadius: borderRadius.md }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "2px solid #444" }}>
+              <tr style={{ borderBottom: `1px solid ${colors.border.light}`, background: colors.bg.tertiary }}>
                 <th 
                   onClick={() => handleSort("name")}
-                  style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500, cursor: "pointer", userSelect: "none" }}
+                  style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
                   Name {sortBy === "name" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Address</th>
+                <th style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, fontSize: typography.fontSize.sm }}>Address</th>
                 <th 
                   onClick={() => handleSort("province")}
-                  style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500, cursor: "pointer", userSelect: "none" }}
+                  style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
                   Province/Region {sortBy === "province" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Active</th>
+                <th style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, fontSize: typography.fontSize.sm }}>Active</th>
                 <th 
                   onClick={() => handleSort("updated")}
-                  style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500, cursor: "pointer", userSelect: "none" }}
+                  style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
                   Updated {sortBy === "updated" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Actions</th>
+                <th style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, fontSize: typography.fontSize.sm }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -356,41 +429,41 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
                 const displayAddress = store.addr_line1 || store.address_full || "-";
                 
                 return (
-                  <tr key={store.id} style={{ borderBottom: "1px solid #333" }}>
-                    <td style={{ padding: 12 }}>{store.name}</td>
-                    <td style={{ padding: 12, color: "#888", fontSize: 13, maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <tr key={store.id} style={{ borderBottom: `1px solid ${colors.border.light}` }}>
+                    <td style={{ padding: spacing['12'], color: colors.text.primary }}>{store.name}</td>
+                    <td style={{ padding: spacing['12'], color: colors.text.secondary, fontSize: typography.fontSize.sm, maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {displayAddress}
                     </td>
-                    <td style={{ padding: 12, color: "#aaa", fontSize: 13 }}>
+                    <td style={{ padding: spacing['12'], color: colors.text.tertiary, fontSize: typography.fontSize.sm }}>
                       {extractProvince(store)}
                     </td>
-                    <td style={{ padding: 12 }}>
+                    <td style={{ padding: spacing['12'] }}>
                       <span
                         style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          fontSize: 12,
-                          background: store.is_active ? "rgba(34, 197, 94, 0.1)" : "rgba(156, 163, 175, 0.1)",
-                          color: store.is_active ? "#22c55e" : "#9ca3af",
+                          padding: `${spacing['4']} ${spacing['8']}`,
+                          borderRadius: borderRadius.sm,
+                          fontSize: typography.fontSize.xs,
+                          background: store.is_active ? 'rgba(16, 185, 129, 0.12)' : 'rgba(156, 163, 175, 0.12)',
+                          color: store.is_active ? colors.status.success : colors.text.tertiary,
                         }}
                       >
                         {store.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td style={{ padding: 12, color: "#888", fontSize: 14 }}>
+                    <td style={{ padding: spacing['12'], color: colors.text.secondary, fontSize: typography.fontSize.sm }}>
                       {new Date(store.updated_at).toLocaleDateString()}
                     </td>
-                    <td style={{ padding: 12 }}>
+                    <td style={{ padding: spacing['12'] }}>
                       <button
                         onClick={() => handleEdit(store)}
                         style={{
-                          padding: "4px 12px",
-                          background: "#2a2a2a",
-                          border: "1px solid #444",
-                          borderRadius: 4,
-                          color: "#fff",
+                          padding: `${spacing['4']} ${spacing['12']}`,
+                          background: colors.bg.secondary,
+                          border: `1px solid ${colors.border.light}`,
+                          borderRadius: borderRadius.base,
+                          color: colors.text.primary,
                           cursor: "pointer",
-                          fontSize: 14,
+                          fontSize: typography.fontSize.sm,
                         }}
                       >
                         Edit
@@ -651,7 +724,7 @@ function StoreModal({
         left: 0,
         right: 0,
         bottom: 0,
-        background: "rgba(0,0,0,0.7)",
+        background: "rgba(15,23,42,0.45)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -662,12 +735,9 @@ function StoreModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#1a1a1a",
-          padding: 24,
-          borderRadius: 8,
+          ...sharedStyles.modalCard,
           width: "90%",
           maxWidth: 500,
-          border: "1px solid #333",
         }}
       >
         <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
@@ -675,24 +745,17 @@ function StoreModal({
         </h2>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Name *</label>
+          <label style={sharedStyles.label}>Name *</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-            }}
+            style={sharedStyles.input}
           />
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Address</label>
+          <label style={sharedStyles.label}>Address</label>
           <div style={{ position: "relative" }}>
             <input
               ref={inputRef}
@@ -708,14 +771,7 @@ function StoreModal({
                 }, 200);
               }}
               placeholder="Nhập địa chỉ để tìm kiếm..."
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
 
             {/* Autocomplete dropdown */}
@@ -728,9 +784,9 @@ function StoreModal({
                   left: 0,
                   right: 0,
                   marginTop: 4,
-                  background: "#1a1a1a",
-                  border: "1px solid #444",
-                  borderRadius: 6,
+                  background: colors.bg.primary,
+                  border: `1px solid ${colors.border.light}`,
+                  borderRadius: borderRadius.md,
                   maxHeight: 300,
                   overflowY: "auto",
                   zIndex: 1001,
@@ -744,19 +800,19 @@ function StoreModal({
                     style={{
                       padding: "10px 12px",
                       cursor: "pointer",
-                      borderBottom: idx < addrSuggestions.length - 1 ? "1px solid #2a2a2a" : "none",
+                      borderBottom: idx < addrSuggestions.length - 1 ? `1px solid ${colors.border.light}` : "none",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "#2a2a2a";
+                      e.currentTarget.style.background = colors.bg.secondary;
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = "transparent";
                     }}
                   >
-                    <div style={{ fontSize: 14, color: "#fff", marginBottom: 2 }}>
+                    <div style={{ fontSize: 14, color: colors.text.primary, marginBottom: 2 }}>
                       {item.display_name || item.main_text || ""}
                     </div>
-                    <div style={{ fontSize: 12, color: "#888" }}>
+                    <div style={{ fontSize: 12, color: colors.text.secondary }}>
                       {item.full_address || item.secondary_text || ""}
                     </div>
                   </div>
@@ -765,16 +821,16 @@ function StoreModal({
             )}
 
             {addrLoading && (
-              <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>Đang tìm...</div>
+              <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 4 }}>Đang tìm...</div>
             )}
 
             {addrError && (
-              <div style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{addrError}</div>
+              <div style={{ fontSize: 12, color: colors.status.error, marginTop: 4 }}>{addrError}</div>
             )}
 
             {/* Warning if address changed but no coordinates */}
             {addrQuery.trim() && !selectedPlaceId && !lat && !lng && (
-              <div style={{ fontSize: 12, color: "#f59e0b", marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: colors.status.warning, marginTop: 4 }}>
                 💡 Nên chọn từ gợi ý để cập nhật tọa độ
               </div>
             )}
@@ -783,22 +839,30 @@ function StoreModal({
 
         {/* Address Preview (when structured address is available) */}
         {(addrLine1 || addrWard || addrDistrict || addrCity) && (
-          <div style={{ marginBottom: 12, padding: 12, background: "#2a2a2a", borderRadius: 6 }}>
-            <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 500 }}>
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 12,
+              background: colors.bg.secondary,
+              borderRadius: borderRadius.md,
+              border: `1px solid ${colors.border.light}`,
+            }}
+          >
+            <div style={{ fontSize: 12, color: colors.text.secondary, marginBottom: 6, fontWeight: 500 }}>
               📍 Địa chỉ đã chọn:
             </div>
             {addrLine1 && (
-              <div style={{ fontSize: 13, color: "#fff", marginBottom: 2 }}>
+              <div style={{ fontSize: 13, color: colors.text.primary, marginBottom: 2 }}>
                 {addrLine1}
               </div>
             )}
             {(addrWard || addrDistrict || addrCity || addrState) && (
-              <div style={{ fontSize: 13, color: "#aaa" }}>
+              <div style={{ fontSize: 13, color: colors.text.secondary }}>
                 {[addrWard, addrDistrict, addrCity || addrState].filter(Boolean).join(", ")}
               </div>
             )}
             {(lat && lng) && (
-              <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: colors.text.secondary, marginTop: 4 }}>
                 📍 Tọa độ: {lat.toFixed(6)}, {lng.toFixed(6)}
               </div>
             )}
@@ -820,28 +884,13 @@ function StoreModal({
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button
             onClick={onClose}
-            style={{
-              padding: "8px 16px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-            }}
+            style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            style={{
-              padding: "8px 16px",
-              background: "#3b82f6",
-              border: "none",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
+            style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
           >
             Save
           </button>
@@ -922,57 +971,42 @@ function PromotionsTab({ setError }: { setError: (msg: string | null) => void })
           placeholder="Search promotions..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            flex: 1,
-            padding: "8px 12px",
-            background: "#2a2a2a",
-            border: "1px solid #444",
-            borderRadius: 6,
-            color: "#fff",
-          }}
+          style={{ ...sharedStyles.input, flex: 1 }}
         />
         <button
           onClick={handleCreate}
-          style={{
-            padding: "8px 16px",
-            background: "#3b82f6",
-            border: "none",
-            borderRadius: 6,
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 500,
-          }}
+          style={sharedStyles.primaryButton}
         >
           + Create Promotion
         </button>
       </div>
 
       {loading ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#888" }}>Loading...</div>
+        <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>Loading...</div>
       ) : promotions.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#888" }}>No promotions found</div>
+        <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>No promotions found</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "2px solid #444" }}>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Code</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Name</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Type</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>% Off</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Min Qty</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Priority</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Stackable</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Active</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Actions</th>
+              <tr style={{ borderBottom: `1px solid ${colors.border.light}` }}>
+                <th style={sharedStyles.tableHeader}>Code</th>
+                <th style={sharedStyles.tableHeader}>Name</th>
+                <th style={sharedStyles.tableHeader}>Type</th>
+                <th style={sharedStyles.tableHeader}>% Off</th>
+                <th style={sharedStyles.tableHeader}>Min Qty</th>
+                <th style={sharedStyles.tableHeader}>Priority</th>
+                <th style={sharedStyles.tableHeader}>Stackable</th>
+                <th style={sharedStyles.tableHeader}>Active</th>
+                <th style={sharedStyles.tableHeader}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {promotions.map((promo) => (
-                <tr key={promo.code} style={{ borderBottom: "1px solid #333" }}>
+                <tr key={promo.code} style={sharedStyles.tableRow}>
                   <td style={{ padding: 12, fontWeight: 500 }}>{promo.code}</td>
                   <td style={{ padding: 12 }}>{promo.name}</td>
-                  <td style={{ padding: 12, color: "#888", fontSize: 14 }}>{promo.promo_type}</td>
+                  <td style={{ padding: 12, color: colors.text.secondary, fontSize: 14 }}>{promo.promo_type}</td>
                   <td style={{ padding: 12 }}>{promo.percent_off ?? "-"}</td>
                   <td style={{ padding: 12 }}>{promo.min_qty ?? "-"}</td>
                   <td style={{ padding: 12 }}>{promo.priority}</td>
@@ -983,8 +1017,8 @@ function PromotionsTab({ setError }: { setError: (msg: string | null) => void })
                         padding: "4px 8px",
                         borderRadius: 4,
                         fontSize: 12,
-                        background: promo.is_active ? "rgba(34, 197, 94, 0.1)" : "rgba(156, 163, 175, 0.1)",
-                        color: promo.is_active ? "#22c55e" : "#9ca3af",
+                        background: promo.is_active ? colors.status.successLight : colors.bg.secondary,
+                        color: promo.is_active ? colors.status.success : colors.text.secondary,
                       }}
                     >
                       {promo.is_active ? "Active" : "Inactive"}
@@ -993,15 +1027,7 @@ function PromotionsTab({ setError }: { setError: (msg: string | null) => void })
                   <td style={{ padding: 12 }}>
                     <button
                       onClick={() => handleEdit(promo)}
-                      style={{
-                        padding: "4px 12px",
-                        background: "#2a2a2a",
-                        border: "1px solid #444",
-                        borderRadius: 4,
-                        color: "#fff",
-                        cursor: "pointer",
-                        fontSize: 14,
-                      }}
+                      style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}
                     >
                       Edit
                     </button>
@@ -1146,7 +1172,7 @@ function PromotionModal({
         left: 0,
         right: 0,
         bottom: 0,
-        background: "rgba(0,0,0,0.7)",
+        background: "rgba(15,23,42,0.45)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -1157,14 +1183,9 @@ function PromotionModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#1a1a1a",
-          padding: 24,
-          borderRadius: 8,
+          ...sharedStyles.modalCard,
           width: "90%",
           maxWidth: 600,
-          border: "1px solid #333",
-          maxHeight: "90vh",
-          overflowY: "auto",
         }}
       >
         <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
@@ -1173,156 +1194,108 @@ function PromotionModal({
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Code *</label>
+            <label style={sharedStyles.label}>Code *</label>
             <input
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               disabled={!!promotion}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: promotion ? "#1a1a1a" : "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: promotion ? "#666" : "#fff",
-              }}
+              style={promotion ? sharedStyles.disabledInput : sharedStyles.input}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Name *</label>
+            <label style={sharedStyles.label}>Name *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Promo Type *</label>
+            <label style={sharedStyles.label}>Promo Type *</label>
             <input
               type="text"
               value={promoType}
               onChange={(e) => setPromoType(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Priority</label>
+            <label style={sharedStyles.label}>Priority</label>
             <input
               type="number"
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Percent Off (0-100)</label>
+            <label style={sharedStyles.label}>Percent Off (0-100)</label>
             <input
               type="number"
               value={percentOff}
               onChange={(e) => setPercentOff(e.target.value)}
               min="0"
               max="100"
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Min Qty</label>
+            <label style={sharedStyles.label}>Min Qty</label>
             <input
               type="number"
               value={minQty}
               onChange={(e) => setMinQty(e.target.value)}
               min="0"
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>Start At</label>
+            <label style={sharedStyles.label}>Start At</label>
             <input
               type="datetime-local"
               value={startAt}
               onChange={(e) => setStartAt(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>End At</label>
+            <label style={sharedStyles.label}>End At</label>
             <input
               type="datetime-local"
               value={endAt}
               onChange={(e) => setEndAt(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
           </div>
         </div>
 
         {/* Category Scopes for DISCOUNT */}
         {promoType === "DISCOUNT" && (
-          <div style={{ marginBottom: 16, padding: 12, background: "#2a2a2a", borderRadius: 6 }}>
+          <div
+            style={{
+              marginBottom: 16,
+              padding: 12,
+              background: colors.bg.secondary,
+              borderRadius: borderRadius.md,
+              border: `1px solid ${colors.border.light}`,
+            }}
+          >
             <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 500 }}>
               Áp dụng cho danh mục (Category)
             </label>
             {loadingCategories ? (
-              <div style={{ fontSize: 12, color: "#888" }}>Đang tải...</div>
+              <div style={{ fontSize: 12, color: colors.text.secondary }}>Đang tải...</div>
             ) : availableCategories.length === 0 ? (
-              <div style={{ fontSize: 12, color: "#888" }}>Không có category nào</div>
+              <div style={{ fontSize: 12, color: colors.text.secondary }}>Không có category nào</div>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {availableCategories.map((cat) => {
@@ -1334,10 +1307,10 @@ function PromotionModal({
                       onClick={() => toggleCategory(cat)}
                       style={{
                         padding: "6px 12px",
-                        background: isSelected ? "#3b82f6" : "#1a1a1a",
-                        border: `1px solid ${isSelected ? "#3b82f6" : "#444"}`,
-                        borderRadius: 4,
-                        color: "#fff",
+                        background: isSelected ? colors.interactive.primary : colors.bg.primary,
+                        border: `1px solid ${isSelected ? colors.interactive.primary : colors.border.light}`,
+                        borderRadius: borderRadius.sm,
+                        color: isSelected ? colors.text.inverse : colors.text.primary,
                         cursor: "pointer",
                         fontSize: 13,
                         fontWeight: isSelected ? 500 : 400,
@@ -1351,7 +1324,7 @@ function PromotionModal({
               </div>
             )}
             {selectedCategories.size === 0 && (
-              <div style={{ marginTop: 8, fontSize: 12, color: "#f59e0b" }}>
+              <div style={{ marginTop: 8, fontSize: 12, color: colors.status.warning }}>
                 ⚠️ DISCOUNT không chọn category sẽ không áp dụng (apply NONE)
               </div>
             )}
@@ -1383,28 +1356,13 @@ function PromotionModal({
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button
             onClick={onClose}
-            style={{
-              padding: "8px 16px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-            }}
+            style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            style={{
-              padding: "8px 16px",
-              background: "#3b82f6",
-              border: "none",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
+            style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
           >
             Save
           </button>
@@ -1487,56 +1445,41 @@ function ProductsTab({ setError }: { setError: (msg: string | null) => void }) {
           placeholder="Search products..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            flex: 1,
-            padding: "8px 12px",
-            background: "#2a2a2a",
-            border: "1px solid #444",
-            borderRadius: 6,
-            color: "#fff",
-          }}
+          style={{ ...sharedStyles.input, flex: 1 }}
         />
         <button
           onClick={handleCreate}
-          style={{
-            padding: "8px 16px",
-            background: "#3b82f6",
-            border: "none",
-            borderRadius: 6,
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 500,
-          }}
+          style={sharedStyles.primaryButton}
         >
           + Create Product
         </button>
       </div>
 
       {loading ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#888" }}>Loading...</div>
+        <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>Loading...</div>
       ) : products.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#888" }}>No products found</div>
+        <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>No products found</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "2px solid #444" }}>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Code</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Name</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Category</th>
-                <th style={{ padding: 12, textAlign: "right", color: "#888", fontWeight: 500 }}>STD</th>
-                <th style={{ padding: 12, textAlign: "right", color: "#888", fontWeight: 500 }}>PHE</th>
-                <th style={{ padding: 12, textAlign: "right", color: "#888", fontWeight: 500 }}>LA</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Active</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Actions</th>
+              <tr style={{ borderBottom: `1px solid ${colors.border.light}` }}>
+                <th style={sharedStyles.tableHeader}>Code</th>
+                <th style={sharedStyles.tableHeader}>Name</th>
+                <th style={sharedStyles.tableHeader}>Category</th>
+                <th style={{ ...sharedStyles.tableHeader, textAlign: "right" }}>STD</th>
+                <th style={{ ...sharedStyles.tableHeader, textAlign: "right" }}>PHE</th>
+                <th style={{ ...sharedStyles.tableHeader, textAlign: "right" }}>LA</th>
+                <th style={sharedStyles.tableHeader}>Active</th>
+                <th style={sharedStyles.tableHeader}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {products.map((product) => (
-                <tr key={product.id} style={{ borderBottom: "1px solid #333" }}>
+                <tr key={product.id} style={sharedStyles.tableRow}>
                   <td style={{ padding: 12, fontFamily: "monospace" }}>{product.code}</td>
                   <td style={{ padding: 12 }}>{product.name}</td>
-                  <td style={{ padding: 12, color: "#888", fontSize: 14 }}>{product.category || "-"}</td>
+                  <td style={{ padding: 12, color: colors.text.secondary, fontSize: 14 }}>{product.category || "-"}</td>
                   <td style={{ padding: 12, textAlign: "right", fontFamily: "monospace" }}>
                     {product.prices.STD?.toLocaleString() || "-"}
                   </td>
@@ -1552,8 +1495,8 @@ function ProductsTab({ setError }: { setError: (msg: string | null) => void }) {
                         padding: "4px 8px",
                         borderRadius: 4,
                         fontSize: 12,
-                        background: product.is_active ? "rgba(34, 197, 94, 0.1)" : "rgba(156, 163, 175, 0.1)",
-                        color: product.is_active ? "#22c55e" : "#9ca3af",
+                        background: product.is_active ? colors.status.successLight : colors.bg.secondary,
+                        color: product.is_active ? colors.status.success : colors.text.secondary,
                       }}
                     >
                       {product.is_active ? "Active" : "Inactive"}
@@ -1562,15 +1505,7 @@ function ProductsTab({ setError }: { setError: (msg: string | null) => void }) {
                   <td style={{ padding: 12 }}>
                     <button
                       onClick={() => handleEdit(product)}
-                      style={{
-                        padding: "4px 12px",
-                        background: "#2a2a2a",
-                        border: "1px solid #444",
-                        borderRadius: 4,
-                        color: "#fff",
-                        cursor: "pointer",
-                        fontSize: 14,
-                      }}
+                      style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}
                     >
                       Edit
                     </button>
@@ -1664,61 +1599,46 @@ function CategoriesTab({ setError }: { setError: (msg: string | null) => void })
           placeholder="Search categories..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            flex: 1,
-            padding: "8px 12px",
-            background: "#2a2a2a",
-            border: "1px solid #444",
-            borderRadius: 6,
-            color: "#fff",
-          }}
+          style={{ ...sharedStyles.input, flex: 1 }}
         />
         <button
           onClick={handleCreate}
-          style={{
-            padding: "8px 16px",
-            background: "#3b82f6",
-            border: "none",
-            borderRadius: 6,
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 500,
-          }}
+          style={sharedStyles.primaryButton}
         >
           + Create Category
         </button>
       </div>
 
       {loading ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#888" }}>Loading...</div>
+        <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>Loading...</div>
       ) : categories.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#888" }}>No categories found</div>
+        <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>No categories found</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "2px solid #444" }}>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Code</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Name</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Sort Order</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Active</th>
-                <th style={{ padding: 12, textAlign: "left", color: "#888", fontWeight: 500 }}>Actions</th>
+              <tr style={{ borderBottom: `1px solid ${colors.border.light}` }}>
+                <th style={sharedStyles.tableHeader}>Code</th>
+                <th style={sharedStyles.tableHeader}>Name</th>
+                <th style={sharedStyles.tableHeader}>Sort Order</th>
+                <th style={sharedStyles.tableHeader}>Active</th>
+                <th style={sharedStyles.tableHeader}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {categories.map((cat) => (
-                <tr key={cat.code} style={{ borderBottom: "1px solid #333" }}>
+                <tr key={cat.code} style={sharedStyles.tableRow}>
                   <td style={{ padding: 12, fontFamily: "monospace" }}>{cat.code}</td>
                   <td style={{ padding: 12 }}>{cat.name}</td>
-                  <td style={{ padding: 12, color: "#888" }}>{cat.sort_order}</td>
+                  <td style={{ padding: 12, color: colors.text.secondary }}>{cat.sort_order}</td>
                   <td style={{ padding: 12 }}>
                     <span
                       style={{
                         padding: "4px 8px",
                         borderRadius: 4,
                         fontSize: 12,
-                        background: cat.is_active ? "rgba(34, 197, 94, 0.1)" : "rgba(156, 163, 175, 0.1)",
-                        color: cat.is_active ? "#22c55e" : "#9ca3af",
+                        background: cat.is_active ? colors.status.successLight : colors.bg.secondary,
+                        color: cat.is_active ? colors.status.success : colors.text.secondary,
                       }}
                     >
                       {cat.is_active ? "Active" : "Inactive"}
@@ -1727,15 +1647,7 @@ function CategoriesTab({ setError }: { setError: (msg: string | null) => void })
                   <td style={{ padding: 12 }}>
                     <button
                       onClick={() => handleEdit(cat)}
-                      style={{
-                        padding: "4px 12px",
-                        background: "#2a2a2a",
-                        border: "1px solid #444",
-                        borderRadius: 4,
-                        color: "#fff",
-                        cursor: "pointer",
-                        fontSize: 14,
-                      }}
+                      style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}
                     >
                       Edit
                     </button>
@@ -1798,7 +1710,7 @@ function CategoryModal({
         left: 0,
         right: 0,
         bottom: 0,
-        background: "rgba(0,0,0,0.7)",
+        background: "rgba(15,23,42,0.45)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -1809,13 +1721,9 @@ function CategoryModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#1a1a1a",
-          borderRadius: 12,
-          padding: 24,
+          ...sharedStyles.modalCard,
           width: "90%",
           maxWidth: 500,
-          maxHeight: "90vh",
-          overflow: "auto",
         }}
       >
         <h2 style={{ marginTop: 0, marginBottom: 24 }}>
@@ -1823,7 +1731,7 @@ function CategoryModal({
         </h2>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+          <label style={sharedStyles.label}>
             Code *
           </label>
           <input
@@ -1833,24 +1741,19 @@ function CategoryModal({
             disabled={!!category}
             placeholder="DRINK, CAKE, TOPPING..."
             style={{
-              width: "100%",
-              padding: "8px 12px",
-              background: category ? "#1a1a1a" : "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
+              ...(category ? sharedStyles.disabledInput : sharedStyles.input),
               textTransform: "uppercase",
             }}
           />
           {category && (
-            <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 4 }}>
               Code cannot be changed after creation
             </div>
           )}
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+          <label style={sharedStyles.label}>
             Name *
           </label>
           <input
@@ -1858,19 +1761,12 @@ function CategoryModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Đồ uống, Bánh..."
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-            }}
+            style={sharedStyles.input}
           />
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+          <label style={sharedStyles.label}>
             Sort Order
           </label>
           <input
@@ -1878,14 +1774,7 @@ function CategoryModal({
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value)}
             min="0"
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-            }}
+            style={sharedStyles.input}
           />
         </div>
 
@@ -1904,28 +1793,13 @@ function CategoryModal({
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button
             onClick={onClose}
-            style={{
-              padding: "8px 16px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-            }}
+            style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            style={{
-              padding: "8px 16px",
-              background: "#3b82f6",
-              border: "none",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
+            style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
           >
             Save
           </button>
@@ -2083,14 +1957,9 @@ function ProductModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#1a1a1a",
-          padding: 24,
-          borderRadius: 8,
+          ...sharedStyles.modalCard,
           width: "90%",
           maxWidth: 700,
-          maxHeight: "90vh",
-          overflow: "auto",
-          border: "1px solid #333",
         }}
       >
         <h2 style={{ marginTop: 0, marginBottom: 20 }}>
@@ -2099,7 +1968,7 @@ function ProductModal({
 
         {/* Category Dropdown */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+          <label style={sharedStyles.label}>
             Category *
           </label>
           <select
@@ -2107,13 +1976,9 @@ function ProductModal({
             onChange={(e) => setCategory(e.target.value)}
             disabled={categoriesLoading}
             style={{
-              width: "100%",
-              padding: "8px 12px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-              fontSize: 14,
+              ...sharedStyles.input,
+              color: colors.text.primary,
+              background: colors.bg.secondary,
             }}
           >
             <option value="">-- Select Category --</option>
@@ -2127,7 +1992,7 @@ function ProductModal({
 
         {/* Name */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+          <label style={sharedStyles.label}>
             Name *
           </label>
           <input
@@ -2135,20 +2000,13 @@ function ProductModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Phở mai cà phê..."
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-            }}
+            style={sharedStyles.input}
           />
         </div>
 
         {/* Code (auto-generated or editable) */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+          <label style={sharedStyles.label}>
             Code *
           </label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -2159,42 +2017,41 @@ function ProductModal({
               disabled={!codeEditing && !product}
               placeholder="Auto-generated..."
               style={{
+                ...sharedStyles.input,
                 flex: 1,
-                padding: "8px 12px",
-                background: (!codeEditing && !product) ? "#1a1a1a" : "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-                fontFamily: "monospace",
+                background: !codeEditing && !product ? colors.bg.tertiary : colors.bg.secondary,
+                color: !codeEditing && !product ? colors.text.secondary : colors.text.primary,
+                cursor: !codeEditing && !product ? "not-allowed" : "text",
+                fontFamily: typography.fontFamily.mono,
               }}
             />
             {!product && !codeEditing && (
               <button
                 onClick={handleCodeEdit}
-                style={{
-                  padding: "8px 12px",
-                  background: "#2a2a2a",
-                  border: "1px solid #444",
-                  borderRadius: 6,
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
+                style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['12']}` }}
               >
                 Edit
               </button>
             )}
           </div>
           {!product && !codeManuallyEdited && (
-            <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 4 }}>
               Code auto-generated from category + name
             </div>
           )}
         </div>
 
         {/* Price Mode Selection */}
-        <div style={{ marginBottom: 16, padding: 16, background: "#2a2a2a", borderRadius: 8 }}>
-          <label style={{ display: "block", marginBottom: 8, fontSize: 14, color: "#888", fontWeight: 500 }}>
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 16,
+            background: colors.bg.secondary,
+            borderRadius: borderRadius.md,
+            border: `1px solid ${colors.border.light}`,
+          }}
+        >
+          <label style={sharedStyles.labelSemibold}>
             Pricing Mode
           </label>
           <div style={{ display: "flex", gap: 16 }}>
@@ -2222,7 +2079,7 @@ function ProductModal({
         {/* Price Inputs */}
         {priceMode === "single" ? (
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+            <label style={sharedStyles.label}>
               Price (STD)
             </label>
             <input
@@ -2232,20 +2089,13 @@ function ProductModal({
               min="0"
               step="1000"
               placeholder="45000"
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "#2a2a2a",
-                border: "1px solid #444",
-                borderRadius: 6,
-                color: "#fff",
-              }}
+              style={sharedStyles.input}
             />
           </div>
         ) : (
           <div style={{ marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <div>
-              <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+              <label style={sharedStyles.label}>
                 Price PHÊ
               </label>
               <input
@@ -2255,18 +2105,11 @@ function ProductModal({
                 min="0"
                 step="1000"
                 placeholder="35000"
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  background: "#2a2a2a",
-                  border: "1px solid #444",
-                  borderRadius: 6,
-                  color: "#fff",
-                }}
+                style={sharedStyles.input}
               />
             </div>
             <div>
-              <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+              <label style={sharedStyles.label}>
                 Price LA
               </label>
               <input
@@ -2276,18 +2119,11 @@ function ProductModal({
                 min="0"
                 step="1000"
                 placeholder="45000"
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  background: "#2a2a2a",
-                  border: "1px solid #444",
-                  borderRadius: 6,
-                  color: "#fff",
-                }}
+                style={sharedStyles.input}
               />
             </div>
             <div>
-              <label style={{ display: "block", marginBottom: 4, fontSize: 14, color: "#888" }}>
+              <label style={sharedStyles.label}>
                 Price STD (optional)
               </label>
               <input
@@ -2297,14 +2133,7 @@ function ProductModal({
                 min="0"
                 step="1000"
                 placeholder="55000"
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  background: "#2a2a2a",
-                  border: "1px solid #444",
-                  borderRadius: 6,
-                  color: "#fff",
-                }}
+                style={sharedStyles.input}
               />
             </div>
           </div>
@@ -2327,28 +2156,13 @@ function ProductModal({
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button
             onClick={onClose}
-            style={{
-              padding: "8px 16px",
-              background: "#2a2a2a",
-              border: "1px solid #444",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-            }}
+            style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            style={{
-              padding: "8px 16px",
-              background: "#3b82f6",
-              border: "none",
-              borderRadius: 6,
-              color: "#fff",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
+            style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
           >
             Save
           </button>

@@ -61,6 +61,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": GOOGLE_PLACE_API_KEY,
+          "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat.mainText,suggestions.placePrediction.structuredFormat.secondaryText,suggestions.placePrediction.text",
         },
         body: JSON.stringify(requestBody),
       });
@@ -75,7 +76,7 @@ export async function GET(req: Request) {
       const suggestions = data?.suggestions || [];
 
       if (suggestions.length > 0) {
-        // Map to UI contract format
+        // Map to UI contract format with main_text/secondary_text for 2-line display
         const items = suggestions.slice(0, limit).map((s: any) => {
           const placePrediction = s?.placePrediction || {};
           const mainText = placePrediction.structuredFormat?.mainText?.text || "";
@@ -84,14 +85,15 @@ export async function GET(req: Request) {
           
           return {
             place_id: placePrediction.placeId || null,
+            main_text: mainText || fullText || "",
+            secondary_text: secondaryText || "",
             display_name: mainText || fullText || "",
-            full_address: secondaryText ? `${mainText}, ${secondaryText}` : fullText,
-            raw: s,
+            full_address: secondaryText ? `${mainText}, ${secondaryText}` : (mainText || fullText),
           };
         });
 
         console.debug(`[Autocomplete] Returning ${items.length} suggestions`);
-        return NextResponse.json({ ok: true, items }, { status: 200 });
+        return NextResponse.json({ ok: true, items }, { status: 200, headers: { "Cache-Control": "private, max-age=30" } });
       }
     }
 

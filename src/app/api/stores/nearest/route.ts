@@ -26,17 +26,25 @@ export async function GET(req: Request) {
       return jsonError("Invalid lat or lng values", 400);
     }
 
-    // Call RPC function
+    // Call RPC function (updated to use p_lat/p_lng parameter names)
     const { data, error } = await supabaseAdmin.rpc("nearest_store", {
-      lat: latNum,
-      lng: lngNum,
+      p_lat: latNum,
+      p_lng: lngNum,
       limit_n: limit,
     });
 
     if (error) {
       console.error("RPC nearest_store error:", error);
-      return jsonError("Failed to fetch nearest stores", 500);
+      console.error("RPC params:", { p_lat: latNum, p_lng: lngNum, limit });
+      return jsonError(`RPC error: ${error.message || JSON.stringify(error)}`, 500);
     }
+
+    console.log("RPC nearest_store success:", {
+      p_lat: latNum,
+      p_lng: lngNum,
+      resultCount: data?.length || 0,
+      results: data,
+    });
 
     // Filter out stores with null distance and round to whole meters
     const items = (data || [])
@@ -47,6 +55,8 @@ export async function GET(req: Request) {
         address_full: store.address_full,
         distance_m: Math.round(store.distance_m),
       }));
+
+    console.log("Filtered items:", { count: items.length, items });
 
     return NextResponse.json(
       { ok: true, items },

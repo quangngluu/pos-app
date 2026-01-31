@@ -96,6 +96,7 @@ CREATE INDEX IF NOT EXISTS idx_products_subcategory_id ON public.products(subcat
 -- =====================================================
 
 -- View to maintain compatibility with old price_key system
+DROP VIEW IF EXISTS public.v_product_prices_compat CASCADE;
 CREATE OR REPLACE VIEW public.v_product_prices_compat AS
 SELECT 
   pv.product_id,

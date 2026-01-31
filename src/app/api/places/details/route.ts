@@ -127,10 +127,12 @@ export async function GET(req: Request) {
         route = longText;
       }
 
-      // Ward: administrative_area_level_3 OR sublocality_level_2 OR prefix match
-      if (types.includes("administrative_area_level_3") || types.includes("sublocality_level_2")) {
+      // Ward: administrative_area_level_3 OR sublocality_level_2 OR sublocality_level_3
+      if (!address.ward && (types.includes("administrative_area_level_3") || types.includes("sublocality_level_2") || types.includes("sublocality_level_3"))) {
         address.ward = longText;
-      } else if (!address.ward && (longText.startsWith("Phường ") || longText.startsWith("Xã ") || longText.startsWith("Thị trấn "))) {
+      }
+      // Fallback: prefix match for VN ward patterns
+      if (!address.ward && (longText.startsWith("Phường ") || longText.startsWith("Xã ") || longText.startsWith("Thị trấn "))) {
         address.ward = longText;
       }
 
@@ -141,8 +143,10 @@ export async function GET(req: Request) {
         address.district = longText;
       }
 
-      // City: locality (priority) or administrative_area_level_1
+      // City: locality (priority) or administrative_area_level_2 or administrative_area_level_1 (fallback)
       if (types.includes("locality")) {
+        address.city = longText;
+      } else if (!address.city && types.includes("administrative_area_level_2")) {
         address.city = longText;
       } else if (!address.city && types.includes("administrative_area_level_1")) {
         address.city = longText;
@@ -174,18 +178,22 @@ export async function GET(req: Request) {
       address.line1 = streetNumber;
     }
 
-    // Build response
-    const responseData = {
+    // Build response (exclude raw data in production to reduce payload)
+    const responseData: any = {
       ok: true,
       place_id: data.id || placeId,
-      display_name,
-      full_address,
+      display_name: display_name || "",
+      full_address: full_address || "",
       lat,
       lng,
       lon: lng, // Alias for backward compatibility
       address,
-      raw: data, // Include raw data for debugging
     };
+
+    // Include raw data only in development
+    if (process.env.NODE_ENV !== "production") {
+      responseData.raw = data;
+    }
 
     // Cache the result
     cachePlace(placeId, responseData);

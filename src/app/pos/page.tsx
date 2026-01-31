@@ -164,10 +164,10 @@ function ChipGroup({ value, options, onChange, disabled, onInteract, compact }: 
             onClick={() => !isDisabled && onChange(opt.value)}
             style={{
               padding: "6px 12px",
-              border: isSelected ? "2px solid #3b82f6" : "1px solid #666",
+              border: isSelected ? "2px solid var(--color-interactive-primary)" : "1px solid var(--color-border-light)",
               borderRadius: 16,
-              background: isSelected ? "#3b82f6" : isDisabled ? "#1a1a1a" : "#2a2a2a",
-              color: isDisabled ? "#555" : isSelected ? "#fff" : "#ddd",
+              background: isSelected ? "var(--color-interactive-primary)" : isDisabled ? "var(--color-bg-tertiary)" : "var(--color-bg-secondary)",
+              color: isDisabled ? "var(--color-text-tertiary)" : isSelected ? "var(--color-text-inverse)" : "var(--color-text-primary)",
               cursor: isDisabled ? "not-allowed" : "pointer",
               fontSize: 13,
               fontWeight: isSelected ? 600 : 400,
@@ -177,14 +177,14 @@ function ChipGroup({ value, options, onChange, disabled, onInteract, compact }: 
             }}
             onMouseEnter={(e) => {
               if (!isDisabled && !isSelected) {
-                e.currentTarget.style.background = "#3a3a3a";
-                e.currentTarget.style.borderColor = "#888";
+                e.currentTarget.style.background = "var(--color-bg-tertiary)";
+                e.currentTarget.style.borderColor = "var(--color-border-default)";
               }
             }}
             onMouseLeave={(e) => {
               if (!isDisabled && !isSelected) {
-                e.currentTarget.style.background = "#2a2a2a";
-                e.currentTarget.style.borderColor = "#666";
+                e.currentTarget.style.background = "var(--color-bg-secondary)";
+                e.currentTarget.style.borderColor = "var(--color-border-light)";
               }
             }}
           >
@@ -241,9 +241,11 @@ export default function PosPage() {
   const [quoting, setQuoting] = useState(false);
 
   const [platformName, setPlatformName] = useState<string>("Grab");
+  const [platformDropdownOpen, setPlatformDropdownOpen] = useState(false);
   const [deliveryTime, setDeliveryTime] = useState<string>("");
   const [storeName, setStoreName] = useState<string>("Phê La Hồ Tùng Mậu");
   const [storeId, setStoreId] = useState<string>("");
+  const [storeSearchQuery, setStoreSearchQuery] = useState<string>("");
   const [storeSuggestions, setStoreSuggestions] = useState<any[]>([]);
   const [storeLoading, setStoreLoading] = useState(false);
   const [storeError, setStoreError] = useState<string>("");
@@ -272,7 +274,6 @@ export default function PosPage() {
   // Product Picker Modal state
   const [showProductModal, setShowProductModal] = useState(false);
   const [modalSearchQuery, setModalSearchQuery] = useState("");
-  const [modalCategory, setModalCategory] = useState<string>("DRINK");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [editLineId, setEditLineId] = useState<string | null>(null);
 
@@ -660,9 +661,24 @@ export default function PosPage() {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.id !== lineId)));
   }
 
+  /**
+   * ROOT CAUSE ANALYSIS (TASK A):
+   * The "lost size" bug occurs when:
+   * 1. v_products_menu view returns NULL for price_phe/price_la because product_variants or product_variant_prices are missing
+   * 2. When price fields are NULL, getAvailableSizes returns only ["STD"], causing UI to hide size chips
+   * 3. The view relies on JOIN with product_variants + product_variant_prices - if either is empty, prices become NULL
+   * 
+   * DATA CONTRACT: v_products_menu must return:
+   * - price_phe: number|null (from variant SIZE_PHE)
+   * - price_la: number|null (from variant SIZE_LA)  
+   * - price_std: number|null (from variant STD)
+   * 
+   * FIX: Ensure all DRINK products have variants + prices in DB
+   */
   function getAvailableSizes(p: ProductRow | null): SizeKey[] {
     if (!p) return ["STD"];
     const sizes: SizeKey[] = [];
+    // Check each price field from v_products_menu
     if (p.price_phe != null) sizes.push("SIZE_PHE");
     if (p.price_la != null) sizes.push("SIZE_LA");
     if (p.price_std != null) sizes.push("STD");
@@ -682,16 +698,25 @@ export default function PosPage() {
     sorted.forEach((c) => {
       if (c !== "DRINK" && c !== "CAKE") order.push(c);
     });
-    order.push("ALL");
     return order;
   }, [products]);
 
   const categoryLabel = (cat: string) => {
-    if (cat === "ALL") return "Tất cả";
     if (cat === "DRINK") return "Đồ uống";
     if (cat === "CAKE") return "Bánh";
+    if (cat === "TOPPING") return "Topping";
+    if (cat === "MERCHANDISE") return "Khác";
     return cat;
   };
+
+  // Count draft items by product_id for badge display
+  const draftCountByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    draftLines.forEach((d) => {
+      m.set(d.product_id, (m.get(d.product_id) || 0) + d.qty);
+    });
+    return m;
+  }, [draftLines]);
 
   function openProductModal(lineToEdit?: Line) {
     setShowProductModal(true);
@@ -700,8 +725,6 @@ export default function PosPage() {
     if (lineToEdit && lineToEdit.product_id) {
       // EDIT mode: prefill one draft from existing line
       const product = productById.get(lineToEdit.product_id);
-      const category = product?.category?.includes("DRINK") ? "DRINK" : product?.category?.includes("CAKE") ? "CAKE" : "ALL";
-      setModalCategory(category);
       setEditLineId(lineToEdit.id);
       
       const draft: DraftLine = {
@@ -720,7 +743,6 @@ export default function PosPage() {
       }
     } else {
       // ADD mode: start fresh
-      setModalCategory("DRINK");
       setEditLineId(null);
       setDraftLines([]);
     }
@@ -999,12 +1021,76 @@ export default function PosPage() {
 
       const { ok, json } = await safeReadJson(res);
       if (!ok || !json?.ok) {
-        alert(`Tạo đơn thất bại: ${json?.error || "Unknown"}`);
+        const errorDetail = json?.detail ? ` (${typeof json.detail === 'string' ? json.detail : JSON.stringify(json.detail)})` : '';
+        alert(`Tạo đơn thất bại: ${json?.error || "Unknown"}${errorDetail}`);
         return;
+      }
+
+      // Send Telegram notification
+      try {
+        // Build item lines for telegram message with aligned formatting
+        const telegramItems: string[] = [];
+        for (const l of lines) {
+          if (!l.product_id || !isPositiveInt(l.qty)) continue;
+          const p = productById.get(l.product_id);
+          const name = p?.name ?? l.product_name_input ?? "";
+          const ql = quoteLineMap.get(l.id);
+          
+          // Size label
+          const displaySize = ql?.display_price_key ?? l.size;
+          const sizeLabels: Record<string, string> = { SIZE_PHE: "Phê", SIZE_LA: "La", STD: "" };
+          const sizeLabel = sizeLabels[displaySize] || "";
+          
+          // Sugar label
+          const opts = sugarMap[l.product_id];
+          const sugarLabel = opts?.find((o) => o.value_code === l.sugar_value_code)?.label ?? "";
+          
+          const qtyStr = String(l.qty).padStart(2, "0");
+          const namePadded = name.padEnd(28, " ");
+          const details = [sizeLabel, sugarLabel].filter(Boolean).join(", ");
+          telegramItems.push(`${qtyStr}     ${namePadded}${details ? `(${details})` : ""}`);
+        }
+
+        // Find promotion name
+        const promoDisplay = promotionCode 
+          ? promotions.find(pr => pr.code === promotionCode)?.name || promotionCode 
+          : "";
+
+        const separator = "─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─";
+        
+        const telegramMessage = [
+          `Loại giao hàng: ${platformName}`,
+          promoDisplay ? `CTKM: ${promoDisplay}` : "",
+          "- Thông tin món:",
+          "```",
+          ...telegramItems,
+          "```",
+          separator,
+          `- Tổng đơn (sau chiết khấu):         ${formatMoney(itemsPay).padStart(10, " ")}`,
+          `- Phí ship sau giảm:                 ${formatMoney(shipping.pay).padStart(10, " ")}`,
+          `- Tổng đơn bao gồm phí ship:         ${formatMoney(grandTotal).padStart(10, " ")}`,
+          separator,
+          `- Cơ sở thực hiện: ${storeName}`,
+        ].filter(Boolean).join("\n");
+
+        // Fire and forget - don't block on telegram
+        fetch("/api/telegram/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            message: telegramMessage,
+            chat_id: "646594151",
+            order_id: json.order?.id,
+            order_code: json.order?.order_code,
+          }),
+        }).catch((e) => console.error("Telegram send failed:", e));
+      } catch (telegramErr) {
+        console.error("Telegram notification error:", telegramErr);
       }
 
       alert(`✅ Tạo đơn thành công!\nOrder ID: ${json.order?.id || ""}\nOrder code: ${json.order?.order_code || ""}`);
 
+      // Clear all form data for new order
       setLines([newLine()]);
       setPromotionCode("");
       setQuote(null);
@@ -1014,6 +1100,12 @@ export default function PosPage() {
       setNote("");
       setAddrSuggestions([]);
       setSelectedAddr(null);
+      // Clear customer info
+      setPhone("");
+      setCustomerName("");
+      setDefaultAddress("");
+      setAddrQuery("");
+      setCustomerSuggestions([]);
     } catch (e: any) {
       alert(`Tạo đơn thất bại: ${e.message || "Unknown error"}`);
     } finally {
@@ -1026,18 +1118,156 @@ export default function PosPage() {
   if (checkingAuth) return <main style={{ padding: 24 }}>Checking session...</main>;
 
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui" }}>
+    <main style={{ padding: 24, fontFamily: "system-ui", background: "var(--color-bg-primary)", color: "var(--color-text-primary)" }}>
       <h1 style={{ marginBottom: 12 }}>POS</h1>
+
+      {/* Customer Section - TOP */}
+      <div
+        style={{
+          marginBottom: 16,
+          padding: 16,
+          border: "1px solid var(--color-border-light)",
+          borderRadius: 12,
+          background: "var(--color-bg-secondary)",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 16 }}>Khách hàng</div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 16 }}>
+          <div style={{ position: "relative" }}>
+            <div style={{ marginBottom: 6, opacity: 0.8, fontSize: 13 }}>Số điện thoại</div>
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              onBlur={() => {
+                setTimeout(() => setCustomerDropdownOpen(false), 200);
+              }}
+              onFocus={() => {
+                if (customerSuggestions.length > 0) {
+                  setCustomerDropdownOpen(true);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setCustomerDropdownOpen(false);
+                }
+              }}
+              placeholder="VD: 0377538625"
+              style={{
+                padding: 10,
+                width: "100%",
+                background: "var(--color-bg-primary)",
+                border: "1px solid var(--color-border-light)",
+                borderRadius: 8,
+                color: "var(--color-text-primary)",
+              }}
+            />
+
+            {customerDropdownOpen && customerSuggestions.length > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  zIndex: 50,
+                  border: "1px solid var(--color-border-light)",
+                  borderRadius: 8,
+                  background: "var(--color-bg-primary)",
+                  marginTop: 4,
+                  overflow: "hidden",
+                  maxHeight: 250,
+                  overflowY: "auto",
+                  boxShadow: "var(--shadow-md)",
+                }}
+              >
+                {customerSuggestions.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setCustomerSuggestions([]);
+                      setCustomerDropdownOpen(false);
+                      suppressCustomerSearchRef.current = true;
+                      setPhone(item.phone_number || "");
+                      setCustomerName(item.customer_name || "");
+                      setDefaultAddress(item.default_address || "");
+                      if (!addrQuery.trim() && item.default_address) {
+                        setAddrQuery(item.default_address);
+                      }
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "10px 12px",
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--color-text-primary)",
+                      cursor: "pointer",
+                      borderBottom: "1px solid var(--color-border-light)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--color-bg-secondary)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <div style={{ fontWeight: 500 }}>{item.customer_name || "(Không có tên)"}</div>
+                    <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{item.phone_number}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ marginBottom: 6, opacity: 0.8, fontSize: 13 }}>Tên khách hàng</div>
+            <input
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Tên khách"
+              style={{
+                padding: 10,
+                width: "100%",
+                background: "var(--color-bg-primary)",
+                border: "1px solid var(--color-border-light)",
+                borderRadius: 8,
+                color: "var(--color-text-primary)",
+              }}
+            />
+          </div>
+
+          <div>
+            <div style={{ marginBottom: 6, opacity: 0.8, fontSize: 13 }}>Địa chỉ mặc định</div>
+            <input
+              value={defaultAddress}
+              onChange={(e) => setDefaultAddress(e.target.value)}
+              placeholder="Địa chỉ khách hàng"
+              style={{
+                padding: 10,
+                width: "100%",
+                background: "var(--color-bg-primary)",
+                border: "1px solid var(--color-border-light)",
+                borderRadius: 8,
+                color: "var(--color-text-primary)",
+              }}
+            />
+          </div>
+        </div>
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }}>
         {/* LEFT */}
         <div>
-          <div style={{ border: "1px solid #333", borderRadius: 8, overflow: "hidden" }}>
+          <div style={{ border: "1px solid var(--color-border-light)", borderRadius: 8, overflow: "hidden", background: "var(--color-bg-secondary)" }}>
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "2.2fr 1fr 1.2fr 0.8fr 1.3fr 40px",
-                background: "#111",
+                background: "var(--color-bg-tertiary)",
                 padding: 10,
                 fontWeight: 600,
               }}
@@ -1076,7 +1306,7 @@ export default function PosPage() {
                     display: "grid",
                     gridTemplateColumns: "2.2fr 1fr 1.2fr 0.8fr 1.3fr 40px",
                     padding: 10,
-                    borderTop: "1px solid #222",
+                    borderTop: "1px solid var(--color-border-light)",
                     alignItems: "center",
                     gap: 10,
                     background: (!hasPrice && l.product_id && qty > 0) || quoting ? "rgba(239,68,68,0.08)" : "transparent",
@@ -1087,7 +1317,7 @@ export default function PosPage() {
                     {l.product_id ? (
                       <div>
                         <div style={{ fontWeight: 500, marginBottom: 4 }}>{l.product_name_input || p?.name}</div>
-                        <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                        <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 4 }}>
                           {hasPrice && ql?.unit_price_after != null
                             ? `${formatMoney(ql.unit_price_after)}đ`
                             : p
@@ -1097,7 +1327,7 @@ export default function PosPage() {
                               })()
                             : "—"}
                           {p?.product_code && (
-                            <span style={{ marginLeft: 6, color: "#666", fontSize: 10 }}>({p.product_code})</span>
+                            <span style={{ marginLeft: 6, color: "var(--color-text-muted)", fontSize: 10 }}>({p.product_code})</span>
                           )}
                         </div>
                         <input
@@ -1108,15 +1338,15 @@ export default function PosPage() {
                           style={{
                             width: "100%",
                             padding: "4px 6px",
-                            border: "1px solid #444",
+                            border: "1px solid var(--color-border-light)",
                             borderRadius: 4,
-                            background: "#0a0a0a",
-                            color: "#aaa",
+                            background: "var(--color-bg-secondary)",
+                            color: "var(--color-text-primary)",
                             fontSize: 11,
                           }}
                         />
-                        {hasFreeUpsize && <div style={{ fontSize: 11, color: "#3b82f6", marginTop: 2 }}>• Upsize</div>}
-                        {hasDiscount && <div style={{ fontSize: 11, color: "#10b981", marginTop: 2 }}>• Discount</div>}
+                        {hasFreeUpsize && <div style={{ fontSize: 11, color: "var(--color-status-info)", marginTop: 2 }}>• Upsize</div>}
+                        {hasDiscount && <div style={{ fontSize: 11, color: "var(--color-status-success)", marginTop: 2 }}>• Discount</div>}
                       </div>
                     ) : (
                       <button
@@ -1125,10 +1355,10 @@ export default function PosPage() {
                         style={{
                           padding: 8,
                           width: "100%",
-                          border: "1px dashed #666",
+                          border: "1px dashed var(--color-border-light)",
                           borderRadius: 4,
                           background: "transparent",
-                          color: "#888",
+                          color: "var(--color-text-secondary)",
                           cursor: "pointer",
                           fontSize: 14,
                         }}
@@ -1138,7 +1368,7 @@ export default function PosPage() {
                     )}
 
                     {!hasPrice && l.product_id && qty > 0 && (
-                      <div style={{ marginTop: 6, fontSize: 12, color: "#fca5a5" }}>
+                      <div style={{ marginTop: 6, fontSize: 12, color: "var(--color-status-error)" }}>
                         ❗ Quote báo thiếu giá cho line này. Kiểm tra <code>product_prices</code> / quote API.
                       </div>
                     )}
@@ -1152,10 +1382,10 @@ export default function PosPage() {
                         style={{
                           display: "inline-block",
                           padding: "4px 10px",
-                          border: "1px solid #666",
+                          border: "1px solid var(--color-border-light)",
                           borderRadius: 4,
-                          background: "#2a2a2a",
-                          color: "#ddd",
+                          background: "var(--color-bg-secondary)",
+                          color: "var(--color-text-primary)",
                           fontSize: 12,
                           cursor: "pointer",
                         }}
@@ -1166,7 +1396,7 @@ export default function PosPage() {
                         })()}
                       </div>
                     ) : (
-                      <span style={{ color: "#666" }}>—</span>
+                      <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
                     )}
                   </div>
 
@@ -1178,10 +1408,10 @@ export default function PosPage() {
                         style={{
                           display: "inline-block",
                           padding: "4px 10px",
-                          border: "1px solid #666",
+                          border: "1px solid var(--color-border-light)",
                           borderRadius: 4,
-                          background: "#2a2a2a",
-                          color: "#ddd",
+                          background: "var(--color-bg-secondary)",
+                          color: "var(--color-text-primary)",
                           fontSize: 12,
                           cursor: "pointer",
                           maxWidth: "100%",
@@ -1195,7 +1425,7 @@ export default function PosPage() {
                           .replace(/^Độ ngọt bình thường$/i, "Bình thường") || l.sugar_value_code || "—"}
                       </div>
                     ) : (
-                      <span style={{ color: "#666" }}>—</span>
+                      <span style={{ color: "var(--color-text-tertiary)" }}>—</span>
                     )}
                   </div>
 
@@ -1232,7 +1462,7 @@ export default function PosPage() {
                     style={{
                       padding: "6px 8px",
                       borderRadius: 6,
-                      border: "1px solid #444",
+                      border: "1px solid var(--color-border-light)",
                       background: "transparent",
                       color: "inherit",
                       cursor: "pointer",
@@ -1251,130 +1481,21 @@ export default function PosPage() {
           </p>
         </div>
 
-        {/* RIGHT */}
-        <div style={{ border: "1px solid #333", borderRadius: 8, padding: 16, height: "fit-content" }}>
+        {/* RIGHT - Sticky sidebar */}
+        <div
+          style={{
+            border: "1px solid var(--color-border-light)",
+            borderRadius: 12,
+            padding: 16,
+            height: "fit-content",
+            background: "var(--color-bg-secondary)",
+            boxShadow: "var(--shadow-md)",
+            position: "sticky",
+            top: 24,
+            alignSelf: "flex-start",
+          }}
+        >
           <h3 style={{ marginTop: 0 }}>Xác nhận đơn</h3>
-
-          {/* Customer */}
-          <div style={{ marginBottom: 12, padding: 10, border: "1px solid #222", borderRadius: 10 }}>
-            <div style={{ fontWeight: 700, marginBottom: 10 }}>Khách hàng</div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-              <div style={{ position: "relative" }}>
-                <div style={{ marginBottom: 6, opacity: 0.8 }}>Số điện thoại</div>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  onBlur={() => {
-                    // Delay to allow click on suggestion
-                    setTimeout(() => setCustomerDropdownOpen(false), 200);
-                  }}
-                  onFocus={() => {
-                    if (customerSuggestions.length > 0) {
-                      setCustomerDropdownOpen(true);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      setCustomerDropdownOpen(false);
-                    }
-                  }}
-                  placeholder="VD: 0377538625"
-                  style={{ padding: 8, width: "100%" }}
-                />
-
-                {customerDropdownOpen && customerSuggestions.length > 0 && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      left: 0,
-                      right: 0,
-                      zIndex: 50,
-                      border: "1px solid #222",
-                      borderRadius: 10,
-                      background: "#0b0b0b",
-                      marginTop: 6,
-                      overflow: "hidden",
-                      maxHeight: 300,
-                      overflowY: "auto",
-                    }}
-                  >
-                    {customerSuggestions.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          // Clear suggestions and close dropdown FIRST
-                          setCustomerSuggestions([]);
-                          setCustomerDropdownOpen(false);
-                          suppressCustomerSearchRef.current = true;
-                          
-                          // Then set values
-                          setPhone(item.phone_number || "");
-                          setCustomerName(item.customer_name || "");
-                          setDefaultAddress(item.default_address || "");
-                          if (!addrQuery.trim() && item.default_address) {
-                            setAddrQuery(item.default_address);
-                          }
-                        }}
-                        style={{
-                          display: "block",
-                          width: "100%",
-                          textAlign: "left",
-                          padding: "10px 10px",
-                          border: "none",
-                          background: "transparent",
-                          color: "inherit",
-                          cursor: "pointer",
-                          borderBottom: "1px solid #181818",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "#1a1a1a";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "transparent";
-                        }}
-                      >
-                        <div style={{ fontWeight: 500, marginBottom: 4 }}>
-                          {item.customer_name || "(Không có tên)"}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#888", marginBottom: 2 }}>
-                          {item.phone_number}
-                        </div>
-                        {item.default_address && (
-                          <div style={{ fontSize: 11, color: "#666" }}>
-                            {item.default_address}
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <div style={{ marginBottom: 6, opacity: 0.8 }}>Tên khách hàng</div>
-                <input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Tên khách"
-                  style={{ padding: 8, width: "100%" }}
-                />
-              </div>
-
-              <div>
-                <div style={{ marginBottom: 6, opacity: 0.8 }}>Địa chỉ (mặc định)</div>
-                <textarea
-                  value={defaultAddress}
-                  onChange={(e) => setDefaultAddress(e.target.value)}
-                  placeholder="Địa chỉ"
-                  style={{ padding: 8, width: "100%", minHeight: 56 }}
-                />
-              </div>
-            </div>
-          </div>
 
           {/* Delivery address */}
           <div style={{ position: "relative", marginBottom: 12 }}>
@@ -1386,7 +1507,14 @@ export default function PosPage() {
                 setAddrQuery(v);
                 setSelectedAddr(null);
               }}
-              style={{ padding: 8, width: "100%" }}
+              style={{
+                padding: 10,
+                width: "100%",
+                background: "var(--color-bg-primary)",
+                border: "1px solid var(--color-border-light)",
+                borderRadius: 10,
+                color: "var(--color-text-primary)",
+              }}
               placeholder="Gõ địa chỉ..."
             />
 
@@ -1398,9 +1526,9 @@ export default function PosPage() {
                   left: 0,
                   right: 0,
                   zIndex: 50,
-                  border: "1px solid #222",
+                  border: "1px solid var(--color-border-light)",
                   borderRadius: 10,
-                  background: "#0b0b0b",
+                  background: "var(--color-bg-primary)",
                   marginTop: 6,
                   overflow: "hidden",
                 }}
@@ -1458,14 +1586,28 @@ export default function PosPage() {
                       display: "block",
                       width: "100%",
                       textAlign: "left",
-                      padding: "10px 10px",
+                      padding: "10px 12px",
                       border: "none",
+                      borderBottom: "1px solid var(--color-border-light)",
                       background: "transparent",
-                      color: "inherit",
+                      color: "var(--color-text-primary)",
                       cursor: "pointer",
                     }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--color-bg-secondary)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                    }}
                   >
-                    {it.display_name}
+                    <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                      {it.main_text || it.display_name}
+                    </div>
+                    {it.secondary_text && (
+                      <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                        {it.secondary_text}
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1474,42 +1616,176 @@ export default function PosPage() {
 
           {/* Delivery + store */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginBottom: 12 }}>
-            <div>
+            <div style={{ position: "relative" }}>
               <div style={{ marginBottom: 6, opacity: 0.8 }}>Nền tảng</div>
-              <input value={platformName} onChange={(e) => setPlatformName(e.target.value)} style={{ padding: 8, width: "100%" }} />
+              <div style={{ position: "relative" }}>
+                <input
+                  value={platformName}
+                  onChange={(e) => setPlatformName(e.target.value)}
+                  onFocus={() => setPlatformDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setPlatformDropdownOpen(false), 150)}
+                  style={{
+                    padding: 10,
+                    paddingRight: 32,
+                    width: "100%",
+                    background: "var(--color-bg-primary)",
+                    border: "1px solid var(--color-border-light)",
+                    borderRadius: 10,
+                    color: "var(--color-text-primary)",
+                  }}
+                />
+                <span
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                    color: "var(--color-text-tertiary)",
+                    fontSize: 12,
+                  }}
+                >
+                  ▼
+                </span>
+              </div>
+              {platformDropdownOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 50,
+                    border: "1px solid var(--color-border-light)",
+                    borderRadius: 10,
+                    background: "var(--color-bg-primary)",
+                    marginTop: 4,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                  }}
+                >
+                  {["Grab", "Đến lấy", "ShopeeFood", "Baemin", "Gojek"].map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setPlatformName(opt);
+                        setPlatformDropdownOpen(false);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        border: "none",
+                        background: platformName === opt ? "var(--color-bg-tertiary)" : "transparent",
+                        color: "var(--color-text-primary)",
+                        cursor: "pointer",
+                        fontWeight: platformName === opt ? 600 : 400,
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
               <div style={{ marginBottom: 6, opacity: 0.8 }}>Giờ giao</div>
-              <input value={deliveryTime} onChange={(e) => setDeliveryTime(e.target.value)} style={{ padding: 8, width: "100%" }} />
+              <input
+                value={deliveryTime}
+                onChange={(e) => setDeliveryTime(e.target.value)}
+                style={{
+                  padding: 10,
+                  width: "100%",
+                  background: "var(--color-bg-secondary)",
+                  border: "1px solid var(--color-border-light)",
+                  borderRadius: 10,
+                  color: "var(--color-text-primary)",
+                }}
+              />
             </div>
 
             <div style={{ position: "relative" }}>
               <div style={{ marginBottom: 6, opacity: 0.8 }}>Cơ sở thực hiện</div>
               <input
-                value={storeName}
+                value={storeSearchQuery || storeName}
                 onChange={(e) => {
-                  setStoreName(e.target.value);
+                  const q = e.target.value;
+                  setStoreSearchQuery(q);
                   setAutoSelectedStore(false);
+                  // Search stores API
+                  if (q.length >= 1) {
+                    setStoreLoading(true);
+                    fetch(`/api/stores?q=${encodeURIComponent(q)}&limit=10`)
+                      .then(res => res.json())
+                      .then(data => {
+                        if (data.ok && data.items) {
+                          setStoreSuggestions(data.items);
+                          setStoreDropdownOpen(true);
+                        }
+                      })
+                      .catch(() => {})
+                      .finally(() => setStoreLoading(false));
+                  } else if (q === "") {
+                    // Show all stores when empty
+                    setStoreLoading(true);
+                    fetch(`/api/stores?limit=10`)
+                      .then(res => res.json())
+                      .then(data => {
+                        if (data.ok && data.items) {
+                          setStoreSuggestions(data.items);
+                          setStoreDropdownOpen(true);
+                        }
+                      })
+                      .catch(() => {})
+                      .finally(() => setStoreLoading(false));
+                  }
                 }}
                 onFocus={() => {
+                  setStoreSearchQuery("");
+                  // Load stores on focus
                   if (storeSuggestions.length > 0) {
                     setStoreDropdownOpen(true);
+                  } else {
+                    fetch(`/api/stores?limit=10`)
+                      .then(res => res.json())
+                      .then(data => {
+                        if (data.ok && data.items) {
+                          setStoreSuggestions(data.items);
+                          setStoreDropdownOpen(true);
+                        }
+                      })
+                      .catch(() => {});
                   }
                 }}
                 onBlur={() => {
-                  setTimeout(() => setStoreDropdownOpen(false), 200);
+                  setTimeout(() => {
+                    setStoreDropdownOpen(false);
+                    setStoreSearchQuery("");
+                  }, 200);
                 }}
-                style={{ padding: 8, width: "100%" }}
+                placeholder="Tìm kiếm cơ sở..."
+                style={{
+                  padding: 10,
+                  width: "100%",
+                  background: "var(--color-bg-secondary)",
+                  border: "1px solid var(--color-border-light)",
+                  borderRadius: 10,
+                  color: "var(--color-text-primary)",
+                }}
               />
               {storeLoading && (
-                <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>Đang tìm cơ sở gần nhất...</div>
+                <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
+                  Đang tìm cơ sở gần nhất...
+                </div>
               )}
               {storeError && (
-                <div style={{ fontSize: 12, color: "#f44", marginTop: 4 }}>{storeError}</div>
+                <div style={{ fontSize: 12, color: "var(--color-status-error)", marginTop: 4 }}>{storeError}</div>
               )}
               {autoSelectedStore && storeSuggestions.length > 0 && (
-                <div style={{ fontSize: 12, color: "#4a4", marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: "var(--color-status-success)", marginTop: 4 }}>
                   Gợi ý cơ sở gần nhất: {storeSuggestions[0].name}
                   {Number.isFinite(storeSuggestions[0].distance_m) && ` (~${storeSuggestions[0].distance_m}m)`}
                 </div>
@@ -1524,9 +1800,9 @@ export default function PosPage() {
                     maxHeight: 200,
                     overflowY: "auto",
                     zIndex: 50,
-                    border: "1px solid #222",
+                    border: "1px solid var(--color-border-light)",
                     borderRadius: 10,
-                    background: "#0b0b0b",
+                    background: "var(--color-bg-primary)",
                     marginTop: 6,
                   }}
                 >
@@ -1548,12 +1824,12 @@ export default function PosPage() {
                         padding: "10px 10px",
                         border: "none",
                         background: "transparent",
-                        color: "inherit",
+                        color: "var(--color-text-primary)",
                         cursor: "pointer",
                       }}
                     >
                       <div style={{ fontWeight: 500 }}>{store.name}</div>
-                      <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>
                         {store.address_full}
                         {Number.isFinite(store.distance_m) && ` (~${store.distance_m}m)`}
                       </div>
@@ -1565,14 +1841,37 @@ export default function PosPage() {
 
             <div>
               <div style={{ marginBottom: 6, opacity: 0.8 }}>Ghi chú</div>
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} style={{ padding: 8, width: "100%", minHeight: 64 }} />
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                style={{
+                  padding: 10,
+                  width: "100%",
+                  minHeight: 64,
+                  background: "var(--color-bg-secondary)",
+                  border: "1px solid var(--color-border-light)",
+                  borderRadius: 10,
+                  color: "var(--color-text-primary)",
+                }}
+              />
             </div>
           </div>
 
           {/* CTKM */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ marginBottom: 6, opacity: 0.8 }}>CTKM</div>
-            <select value={promotionCode} onChange={(e) => setPromotionCode(e.target.value)} style={{ padding: 8, width: "100%" }}>
+            <select
+              value={promotionCode}
+              onChange={(e) => setPromotionCode(e.target.value)}
+              style={{
+                padding: 10,
+                width: "100%",
+                background: "var(--color-bg-secondary)",
+                border: "1px solid var(--color-border-light)",
+                borderRadius: 10,
+                color: "var(--color-text-primary)",
+              }}
+            >
               <option value="">-- không áp dụng --</option>
               {promotions.map((p) => (
                 <option key={p.code} value={p.code}>
@@ -1591,7 +1890,15 @@ export default function PosPage() {
           </div>
 
           {/* Shipping */}
-          <div style={{ marginBottom: 12, padding: 10, border: "1px solid #222", borderRadius: 10 }}>
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 12,
+              border: "1px solid var(--color-border-light)",
+              borderRadius: 12,
+              background: "var(--color-bg-primary)",
+            }}
+          >
             <div style={{ fontWeight: 700, marginBottom: 10 }}>Phí ship</div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -1602,7 +1909,14 @@ export default function PosPage() {
                   min={0}
                   value={shippingFee}
                   onChange={(e) => setShippingFee(Math.max(0, Math.round(Number(e.target.value || 0))))}
-                  style={{ padding: 8, width: "100%" }}
+                  style={{
+                    padding: 10,
+                    width: "100%",
+                    background: "var(--color-bg-secondary)",
+                    border: "1px solid var(--color-border-light)",
+                    borderRadius: 10,
+                    color: "var(--color-text-primary)",
+                  }}
                 />
               </div>
 
@@ -1614,7 +1928,15 @@ export default function PosPage() {
                   value={shippingDiscount}
                   disabled={freeShipping}
                   onChange={(e) => setShippingDiscount(Math.max(0, Math.round(Number(e.target.value || 0))))}
-                  style={{ padding: 8, width: "100%", opacity: freeShipping ? 0.6 : 1 }}
+                  style={{
+                    padding: 10,
+                    width: "100%",
+                    opacity: freeShipping ? 0.6 : 1,
+                    background: "var(--color-bg-secondary)",
+                    border: "1px solid var(--color-border-light)",
+                    borderRadius: 10,
+                    color: "var(--color-text-primary)",
+                  }}
                 />
               </div>
             </div>
@@ -1624,7 +1946,7 @@ export default function PosPage() {
               <span>Miễn phí ship</span>
             </label>
 
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-text-secondary)" }}>
               Ship phải trả: <b>{formatMoney(shipping.pay)}</b>
               {shipping.discount > 0 ? ` (đã giảm ${formatMoney(shipping.discount)})` : ""}
             </div>
@@ -1636,10 +1958,10 @@ export default function PosPage() {
               style={{
                 marginBottom: 12,
                 padding: 10,
-                borderRadius: 8,
-                border: "1px solid rgba(239,68,68,0.5)",
-                background: "rgba(239,68,68,0.08)",
-                color: "#fecaca",
+                borderRadius: 10,
+                border: "1px solid var(--color-status-error)",
+                background: "var(--color-status-error-light)",
+                color: "var(--color-status-error)",
                 fontSize: 13,
                 lineHeight: 1.35,
               }}
@@ -1674,7 +1996,7 @@ export default function PosPage() {
             <div style={{ opacity: 0.7 }}>Tiền chiết khấu</div>
             <div style={{ textAlign: "right", opacity: 0.7 }}>{formatMoney(itemsDiscount)}</div>
 
-            <hr style={{ gridColumn: "1 / -1", width: "100%", borderColor: "#222" }} />
+            <hr style={{ gridColumn: "1 / -1", width: "100%", borderColor: "var(--color-border-light)" }} />
 
             <div>Ship phải trả</div>
             <div style={{ textAlign: "right", fontWeight: 700 }}>{formatMoney(shipping.pay)}</div>
@@ -1692,8 +2014,8 @@ export default function PosPage() {
                 style={{
                   padding: "6px 10px",
                   borderRadius: 8,
-                  border: "1px solid #334155",
-                  background: "rgba(148,163,184,0.18)",
+                  border: "1px solid var(--color-border-light)",
+                  background: "var(--color-bg-secondary)",
                   cursor: "pointer",
                   fontWeight: 700,
                 }}
@@ -1711,9 +2033,9 @@ export default function PosPage() {
                 minHeight: 240,
                 padding: 10,
                 borderRadius: 10,
-                border: "1px solid #222",
-                background: "rgba(2,6,23,0.25)",
-                color: "inherit",
+                border: "1px solid var(--color-border-light)",
+                background: "var(--color-bg-secondary)",
+                color: "var(--color-text-primary)",
                 fontSize: 12,
                 lineHeight: 1.35,
                 whiteSpace: "pre-wrap",
@@ -1728,10 +2050,17 @@ export default function PosPage() {
               width: "100%",
               padding: "10px 12px",
               borderRadius: 10,
-              border: "1px solid #334155",
-              background: hasMissingPrice || creatingOrder || quoting || !quote?.ok ? "rgba(148,163,184,0.15)" : "rgba(148,163,184,0.25)",
+              border: "1px solid var(--color-border-light)",
+              background:
+                hasMissingPrice || creatingOrder || quoting || !quote?.ok
+                  ? "var(--color-bg-secondary)"
+                  : "var(--color-interactive-primary)",
               cursor: hasMissingPrice || creatingOrder || quoting || !quote?.ok ? "not-allowed" : "pointer",
               opacity: hasMissingPrice || creatingOrder || quoting || !quote?.ok ? 0.7 : 1,
+              color:
+                hasMissingPrice || creatingOrder || quoting || !quote?.ok
+                  ? "var(--color-text-secondary)"
+                  : "var(--color-text-inverse)",
               fontWeight: 800,
             }}
             onClick={onCreateOrder}
@@ -1766,26 +2095,27 @@ export default function PosPage() {
         >
           <div
             style={{
-              background: "#1a1a1a",
+              background: "var(--color-bg-primary)",
               borderRadius: 8,
               width: "100%",
               maxWidth: 1200,
               height: "80vh",
               display: "flex",
               flexDirection: "column",
+              border: "1px solid var(--color-border-light)",
             }}
           >
-            {/* Header */}
-            <div style={{ padding: 20, borderBottom: "1px solid #333", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ margin: 0 }}>Chọn món</h2>
+            {/* Header - compact */}
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--color-bg-secondary)" }}>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Chọn món</h2>
               <button
                 onClick={closeProductModal}
                 style={{
                   padding: "8px 12px",
-                  border: "1px solid #666",
+                  border: "1px solid var(--color-border-light)",
                   borderRadius: 4,
                   background: "transparent",
-                  color: "#ddd",
+                  color: "var(--color-text-primary)",
                   cursor: "pointer",
                   fontSize: 18,
                 }}
@@ -1797,31 +2127,28 @@ export default function PosPage() {
             {/* Body */}
             <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
               {/* Left Panel */}
-              <div style={{ flex: 2, display: "flex", flexDirection: "column", borderRight: "1px solid #333" }}>
-                {/* Search */}
-                <div style={{ padding: 16 }}>
+              <div style={{ flex: 2, display: "flex", flexDirection: "column", borderRight: "1px solid var(--color-border-light)" }}>
+                {/* Search - sticky */}
+                <div style={{ padding: "12px 16px", position: "sticky", top: 0, zIndex: 20, background: "var(--color-bg-primary)" }}>
                   <input
                     type="text"
                     placeholder="Tìm món..."
                     value={modalSearchQuery}
                     onChange={(e) => setModalSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const filtered = (() => {
-                          let list = products;
-                          if (modalCategory !== "ALL") {
-                            list = list.filter((p) => p.category?.includes(modalCategory));
-                          }
-                          if (modalSearchQuery) {
-                            const normalized = normalizeVietnamese(modalSearchQuery);
-                            list = list.filter((p) => {
-                              const normName = normalizeVietnamese(p.name);
-                              const normCode = normalizeVietnamese(p.product_code);
-                              return normName.includes(normalized) || normCode.includes(normalized);
-                            });
-                          }
-                          return list;
-                        })();
+                      if (e.key === "Enter" && modalSearchQuery) {
+                        const normalized = normalizeVietnamese(modalSearchQuery);
+                        const filtered = products.filter((p) => {
+                          const normName = normalizeVietnamese(p.name);
+                          const normCode = normalizeVietnamese(p.product_code);
+                          return normName.includes(normalized) || normCode.includes(normalized);
+                        }).sort((a, b) => {
+                          const aNorm = normalizeVietnamese(a.name);
+                          const bNorm = normalizeVietnamese(b.name);
+                          const aStarts = aNorm.startsWith(normalized) ? 0 : 1;
+                          const bStarts = bNorm.startsWith(normalized) ? 0 : 1;
+                          return aStarts - bStarts;
+                        });
                         if (filtered.length > 0) {
                           addProductToDraft(filtered[0]);
                         }
@@ -1830,115 +2157,215 @@ export default function PosPage() {
                     style={{
                       width: "100%",
                       padding: 12,
-                      border: "1px solid #666",
+                      border: "1px solid var(--color-border-light)",
                       borderRadius: 4,
-                      background: "#0a0a0a",
-                      color: "#ddd",
+                      background: "var(--color-bg-secondary)",
+                      color: "var(--color-text-primary)",
                       fontSize: 14,
                     }}
                   />
                 </div>
 
-                {/* Category Tabs */}
-                <div style={{ display: "flex", gap: 8, padding: "0 16px 16px", flexWrap: "wrap" }}>
-                  {categoryList.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setModalCategory(cat)}
-                      style={{
-                        padding: "8px 16px",
-                        border: modalCategory === cat ? "2px solid #3b82f6" : "1px solid #666",
-                        borderRadius: 6,
-                        background: modalCategory === cat ? "#3b82f6" : "#2a2a2a",
-                        color: modalCategory === cat ? "#fff" : "#ddd",
-                        cursor: "pointer",
-                        fontWeight: modalCategory === cat ? 600 : 400,
-                      }}
-                    >
-                      {categoryLabel(cat)}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Product Grid */}
+                {/* Product Grid by Category Sections */}
                 <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
-                    {(() => {
-                      let filtered = products;
-                      
-                      // Category filter
-                      if (modalCategory !== "ALL") {
-                        filtered = filtered.filter((p) => p.category?.includes(modalCategory));
-                      }
-                      
-                      // Search filter
-                      if (modalSearchQuery) {
-                        const normalized = normalizeVietnamese(modalSearchQuery);
-                        filtered = filtered.filter((p) => {
-                          const normName = normalizeVietnamese(p.name);
-                          const normCode = normalizeVietnamese(p.product_code);
-                          return normName.includes(normalized) || normCode.includes(normalized);
-                        });
-                        
-                        // Sort: startsWith first
-                        filtered = filtered.sort((a, b) => {
-                          const aNorm = normalizeVietnamese(a.name);
-                          const bNorm = normalizeVietnamese(b.name);
-                          const aStarts = aNorm.startsWith(normalized) ? 0 : 1;
-                          const bStarts = bNorm.startsWith(normalized) ? 0 : 1;
-                          return aStarts - bStarts;
-                        });
-                      } else if (modalCategory === "ALL") {
-                        // Prioritize DRINK in ALL
-                        filtered = filtered.sort((a, b) => {
-                          const aDrink = a.category?.includes("DRINK") ? 0 : 1;
-                          const bDrink = b.category?.includes("DRINK") ? 0 : 1;
-                          return aDrink - bDrink;
-                        });
-                      }
-                      
-                      // Limit results to 50
-                      filtered = filtered.slice(0, 50);
-                      
-                      return filtered.map((product) => (
-                        <div
-                          key={product.product_id}
-                          onClick={() => addProductToDraft(product)}
-                          style={{
-                            padding: 12,
-                            border: "1px solid #444",
-                            borderRadius: 6,
-                            background: "#2a2a2a",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = "#3a3a3a";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = "#2a2a2a";
-                          }}
-                        >
-                          <div style={{ fontWeight: 500, marginBottom: 4 }}>{product.name}</div>
-                          <div style={{ fontSize: 11, color: "#888" }}>{product.product_code}</div>
+                  {(() => {
+                    // Apply search filter if present
+                    let baseFiltered = products;
+                    if (modalSearchQuery) {
+                      const normalized = normalizeVietnamese(modalSearchQuery);
+                      baseFiltered = products.filter((p) => {
+                        const normName = normalizeVietnamese(p.name);
+                        const normCode = normalizeVietnamese(p.product_code);
+                        return normName.includes(normalized) || normCode.includes(normalized);
+                      });
+                      // Sort: startsWith first
+                      baseFiltered = baseFiltered.sort((a, b) => {
+                        const aNorm = normalizeVietnamese(a.name);
+                        const bNorm = normalizeVietnamese(b.name);
+                        const aStarts = aNorm.startsWith(normalized) ? 0 : 1;
+                        const bStarts = bNorm.startsWith(normalized) ? 0 : 1;
+                        return aStarts - bStarts;
+                      });
+                      // For search, show all in one grid
+                      return (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+                          {baseFiltered.slice(0, 50).map((product) => {
+                            const count = draftCountByProduct.get(product.product_id) || 0;
+                            const isSelected = count > 0;
+                            // Build price labels with size hints
+                            const priceLabels: string[] = [];
+                            if (product.price_phe != null) priceLabels.push(`Phê ${formatMoney(product.price_phe)}`);
+                            if (product.price_la != null) priceLabels.push(`La ${formatMoney(product.price_la)}`);
+                            if (product.price_std != null && !product.price_phe && !product.price_la) priceLabels.push(`${formatMoney(product.price_std)}`);
+                            const hasSizes = (product.price_phe != null ? 1 : 0) + (product.price_la != null ? 1 : 0) >= 2;
+                            
+                            return (
+                              <div
+                                key={product.product_id}
+                                onClick={() => addProductToDraft(product)}
+                                style={{
+                                  padding: 10,
+                                  border: isSelected ? "2px solid var(--color-interactive-primary)" : "1px solid var(--color-border-light)",
+                                  borderRadius: 6,
+                                  background: isSelected ? "var(--color-status-info-light)" : "var(--color-bg-secondary)",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                  position: "relative",
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isSelected) e.currentTarget.style.background = "var(--color-bg-tertiary)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isSelected) e.currentTarget.style.background = "var(--color-bg-secondary)";
+                                }}
+                              >
+                                {/* Badge count */}
+                                {isSelected && (
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      top: -6,
+                                      right: -6,
+                                      width: 20,
+                                      height: 20,
+                                      borderRadius: "50%",
+                                      background: "var(--color-interactive-primary)",
+                                      color: "var(--color-text-inverse)",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    {count}
+                                  </div>
+                                )}
+                                <div style={{ fontWeight: 500, marginBottom: 2, fontSize: 13 }}>{product.name}</div>
+                                {/* Size hint chips */}
+                                {hasSizes && (
+                                  <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                                    {product.price_phe != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>Phê</span>}
+                                    {product.price_la != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>La</span>}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: 11, color: isSelected ? "var(--color-interactive-primary)" : "var(--color-text-secondary)", fontWeight: 500 }}>
+                                  {priceLabels.length > 0 ? priceLabels.join(" / ") : "—"}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ));
-                    })()}
-                  </div>
+                      );
+                    }
+                    
+                    // Category sections
+                    return categoryList.map((cat) => {
+                      const catProducts = baseFiltered.filter((p) => p.category?.includes(cat));
+                      if (catProducts.length === 0) return null;
+                      
+                      return (
+                        <div key={cat} style={{ marginBottom: 24 }}>
+                          <h4 style={{ 
+                            margin: "0 0 12px 0", 
+                            padding: "8px 12px",
+                            background: "var(--color-bg-tertiary)", 
+                            borderRadius: 6,
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: "var(--color-text-secondary)",
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 10,
+                          }}>
+                            {categoryLabel(cat)} ({catProducts.length})
+                          </h4>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+                            {catProducts.map((product) => {
+                              const count = draftCountByProduct.get(product.product_id) || 0;
+                              const isSelected = count > 0;
+                              // Build price labels with size hints
+                              const priceLabels: string[] = [];
+                              if (product.price_phe != null) priceLabels.push(`Phê ${formatMoney(product.price_phe)}`);
+                              if (product.price_la != null) priceLabels.push(`La ${formatMoney(product.price_la)}`);
+                              if (product.price_std != null && !product.price_phe && !product.price_la) priceLabels.push(`${formatMoney(product.price_std)}`);
+                              const hasSizes = (product.price_phe != null ? 1 : 0) + (product.price_la != null ? 1 : 0) >= 2;
+                              
+                              return (
+                                <div
+                                  key={product.product_id}
+                                  onClick={() => addProductToDraft(product)}
+                                  style={{
+                                    padding: 10,
+                                    border: isSelected ? "2px solid var(--color-interactive-primary)" : "1px solid var(--color-border-light)",
+                                    borderRadius: 6,
+                                    background: isSelected ? "var(--color-status-info-light)" : "var(--color-bg-secondary)",
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    position: "relative",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isSelected) e.currentTarget.style.background = "var(--color-bg-tertiary)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isSelected) e.currentTarget.style.background = "var(--color-bg-secondary)";
+                                  }}
+                                >
+                                  {/* Badge count */}
+                                  {isSelected && (
+                                    <div
+                                      style={{
+                                        position: "absolute",
+                                        top: -6,
+                                        right: -6,
+                                        width: 20,
+                                        height: 20,
+                                        borderRadius: "50%",
+                                        background: "var(--color-interactive-primary)",
+                                        color: "var(--color-text-inverse)",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      {count}
+                                    </div>
+                                  )}
+                                  <div style={{ fontWeight: 500, marginBottom: 2, fontSize: 13 }}>{product.name}</div>
+                                  {/* Size hint chips - TASK E */}
+                                  {hasSizes && (
+                                    <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                                      {product.price_phe != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>Phê</span>}
+                                      {product.price_la != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>La</span>}
+                                    </div>
+                                  )}
+                                  <div style={{ fontSize: 11, color: isSelected ? "var(--color-interactive-primary)" : "var(--color-text-secondary)", fontWeight: 500 }}>
+                                    {priceLabels.length > 0 ? priceLabels.join(" / ") : "—"}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
               {/* Right Panel - Draft Line Editor */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0a0a0a" }}>
-                <div style={{ padding: 16, borderBottom: "1px solid #333" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--color-bg-secondary)" }}>
+                <div style={{ padding: 16, borderBottom: "1px solid var(--color-border-light)" }}>
                   <h3 style={{ margin: 0, fontSize: 16 }}>Đã chọn ({draftLines.length})</h3>
                 </div>
                 <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
                   {draftLines.length === 0 ? (
-                    <div style={{ textAlign: "center", color: "#666", marginTop: 40 }}>Chưa chọn món nào</div>
+                    <div style={{ textAlign: "center", color: "var(--color-text-tertiary)", marginTop: 40 }}>Chưa chọn món nào</div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                      {draftLines.map((draft) => {
+                      {[...draftLines].reverse().map((draft) => {
                         const product = productById.get(draft.product_id);
                         const availSizes = getAvailableSizes(product ?? null);
                         const isDrink = product?.category?.includes("DRINK");
@@ -1949,16 +2376,16 @@ export default function PosPage() {
                             key={draft.id}
                             style={{
                               padding: 12,
-                              border: "1px solid #333",
+                              border: "1px solid var(--color-border-light)",
                               borderRadius: 6,
-                              background: "#1a1a1a",
+                              background: "var(--color-bg-primary)",
                             }}
                           >
                             {/* Product Name + Qty Inline */}
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                               <div>
                                 <div style={{ fontWeight: 500 }}>{product?.name}</div>
-                                <div style={{ fontSize: 11, color: "#666" }}>
+                                <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
                                   {(() => {
                                     const prices = [product?.price_phe, product?.price_la, product?.price_std].filter((x) => x != null && x > 0);
                                     return prices.length > 0 ? `${formatMoney(Math.min(...(prices as number[])))}đ` : "—";
@@ -1970,10 +2397,10 @@ export default function PosPage() {
                                   onClick={() => updateDraftLine(draft.id, { qty: Math.max(1, draft.qty - 1) })}
                                   style={{
                                     padding: "4px 10px",
-                                    border: "1px solid #666",
+                                    border: "1px solid var(--color-border-light)",
                                     borderRadius: 4,
-                                    background: "#2a2a2a",
-                                    color: "#ddd",
+                                    background: "var(--color-bg-secondary)",
+                                    color: "var(--color-text-primary)",
                                     cursor: "pointer",
                                     fontSize: 14,
                                   }}
@@ -1985,10 +2412,10 @@ export default function PosPage() {
                                   onClick={() => updateDraftLine(draft.id, { qty: draft.qty + 1 })}
                                   style={{
                                     padding: "4px 10px",
-                                    border: "1px solid #666",
+                                    border: "1px solid var(--color-border-light)",
                                     borderRadius: 4,
-                                    background: "#2a2a2a",
-                                    color: "#ddd",
+                                    background: "var(--color-bg-secondary)",
+                                    color: "var(--color-text-primary)",
                                     cursor: "pointer",
                                     fontSize: 14,
                                   }}
@@ -1998,17 +2425,17 @@ export default function PosPage() {
                               </div>
                             </div>
                             
-                            {/* Size */}
-                            {availSizes.length > 1 && (
+                            {/* Size - TASK D: always show when has sizes, fix disabled logic */}
+                            {availSizes.length >= 1 && (
                               <div style={{ marginBottom: 12 }}>
-                                <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>Size:</div>
+                                <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Size:</div>
                                 <ChipGroup
                                   value={draft.size}
                                   options={[
                                     { value: "SIZE_PHE", label: "Phê", disabled: !availSizes.includes("SIZE_PHE") },
                                     { value: "SIZE_LA", label: "La", disabled: !availSizes.includes("SIZE_LA") },
                                     { value: "STD", label: "STD", disabled: !availSizes.includes("STD") },
-                                  ]}
+                                  ].filter(opt => availSizes.includes(opt.value as SizeKey))}
                                   onChange={(size) => updateDraftLine(draft.id, { size: size as SizeKey })}
                                 />
                               </div>
@@ -2017,7 +2444,7 @@ export default function PosPage() {
                             {/* Sugar */}
                             {isDrink && (
                               <div style={{ marginBottom: 12 }}>
-                                <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>Đường:</div>
+                                <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Đường:</div>
                                 <div style={{ maxHeight: 120, overflowY: "auto" }}>
                                   <ChipGroup
                                     compact
@@ -2047,7 +2474,7 @@ export default function PosPage() {
                             
                             {/* Note */}
                             <div style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>Ghi chú:</div>
+                              <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Ghi chú:</div>
                               <input
                                 type="text"
                                 placeholder="Thêm ghi chú..."
@@ -2056,10 +2483,10 @@ export default function PosPage() {
                                 style={{
                                   width: "100%",
                                   padding: 6,
-                                  border: "1px solid #666",
+                                  border: "1px solid var(--color-border-light)",
                                   borderRadius: 4,
-                                  background: "#0a0a0a",
-                                  color: "#ddd",
+                                  background: "var(--color-bg-secondary)",
+                                  color: "var(--color-text-primary)",
                                   fontSize: 13,
                                 }}
                               />
@@ -2071,10 +2498,10 @@ export default function PosPage() {
                               style={{
                                 width: "100%",
                                 padding: "6px 12px",
-                                border: "1px solid #666",
+                                border: "1px solid var(--color-border-light)",
                                 borderRadius: 4,
                                 background: "transparent",
-                                color: "#f87171",
+                                color: "var(--color-status-error)",
                                 cursor: "pointer",
                                 fontSize: 12,
                               }}
@@ -2091,15 +2518,15 @@ export default function PosPage() {
             </div>
 
             {/* Footer */}
-            <div style={{ padding: 20, borderTop: "1px solid #333", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ padding: 20, borderTop: "1px solid var(--color-border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--color-bg-secondary)" }}>
               <button
                 onClick={closeProductModal}
                 style={{
                   padding: "10px 20px",
-                  border: "1px solid #666",
+                  border: "1px solid var(--color-border-light)",
                   borderRadius: 6,
                   background: "transparent",
-                  color: "#ddd",
+                  color: "var(--color-text-primary)",
                   cursor: "pointer",
                   fontSize: 14,
                 }}
@@ -2113,8 +2540,8 @@ export default function PosPage() {
                   padding: "10px 24px",
                   border: "none",
                   borderRadius: 6,
-                  background: draftLines.length > 0 ? "#3b82f6" : "#444",
-                  color: draftLines.length > 0 ? "#fff" : "#888",
+                  background: draftLines.length > 0 ? "var(--color-interactive-primary)" : "var(--color-border-light)",
+                  color: draftLines.length > 0 ? "var(--color-text-inverse)" : "var(--color-text-tertiary)",
                   cursor: draftLines.length > 0 ? "pointer" : "not-allowed",
                   fontSize: 14,
                   fontWeight: 600,
