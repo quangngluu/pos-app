@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/lib/supabaseAdmin";
+import {
+  ORDER_STATUSES,
+  OrderStatus,
+  TELEGRAM_STATUS_LABELS,
+  VALID_TRANSITIONS,
+} from "@/app/lib/constants/orderStatus";
 
 export const runtime = "nodejs";
 
@@ -10,33 +16,32 @@ function jsonError(message: string, status = 500) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
-// Status labels in Vietnamese
-const STATUS_LABELS: Record<string, string> = {
-  PLACED: "📤 Đã bắn đơn",
-  CONFIRMED: "✅ Cơ sở xác nhận",
-  SHIPPING: "🚚 Đang vận chuyển",
-  COMPLETED: "🎉 Hoàn thành",
-};
-
 // Build inline keyboard for status buttons
-function buildStatusKeyboard(orderId: string, currentStatus: string) {
-  const statuses = ["PLACED", "CONFIRMED", "SHIPPING", "COMPLETED"];
-  const currentIdx = statuses.indexOf(currentStatus);
+function buildStatusKeyboard(orderId: string, currentStatus: OrderStatus) {
+  const validNext = VALID_TRANSITIONS[currentStatus].filter(s => s !== "CANCELLED");
   
-  // Only show next status button (can't go back)
   const buttons = [];
   
-  if (currentIdx < statuses.length - 1) {
-    const nextStatus = statuses[currentIdx + 1];
+  // Show next status button if available
+  if (validNext.length > 0) {
+    const nextStatus = validNext[0];
     buttons.push([{
-      text: `➡️ ${STATUS_LABELS[nextStatus]}`,
+      text: `➡️ ${TELEGRAM_STATUS_LABELS[nextStatus]}`,
       callback_data: `status:${orderId}:${nextStatus}`,
+    }]);
+  }
+  
+  // Add send image button (only for non-completed orders)
+  if (currentStatus !== "COMPLETED" && currentStatus !== "CANCELLED") {
+    buttons.push([{
+      text: `📷 Gửi hình ảnh`,
+      callback_data: `image:${orderId}`,
     }]);
   }
   
   // Show current status as info
   buttons.push([{
-    text: `📋 Trạng thái: ${STATUS_LABELS[currentStatus]}`,
+    text: `📋 Trạng thái: ${TELEGRAM_STATUS_LABELS[currentStatus]}`,
     callback_data: `info:${orderId}`,
   }]);
   

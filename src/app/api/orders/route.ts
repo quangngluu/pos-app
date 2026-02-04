@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { ORDER_STATUSES } from "@/app/lib/constants/orderStatus";
 import { supabaseAdmin } from "@/app/lib/supabaseAdmin";
 import { quoteOrder } from "@/app/lib/pricingEngine";
 import { requireUser } from "@/app/lib/requireAuth";
+
+// Force dynamic rendering - user-specific data must not be cached
+export const dynamic = "force-dynamic";
 
 const SizeKeySchema = z.enum(["SIZE_PHE", "SIZE_LA", "STD"]);
 
@@ -20,7 +24,7 @@ const LineSchema = z.object({
 });
 
 const BodySchema = z.object({
-  phone: z.string().optional().default(""),
+  phone: z.string().min(1, "Phone number is required"), // Required for customer
   customer_name: z.string().optional().default(""),
   default_address: z.string().optional().default(""),
   addr_selected: z.any().optional().nullable(), // { place_id, display_name, full_address, lat, lng }
@@ -30,6 +34,12 @@ const BodySchema = z.object({
   store_id: z.string().uuid().optional().nullable(),
   store_name: z.string().optional().default(""),
   promotion_code: z.string().optional().nullable().default(null),
+  images: z.array(z.object({
+    file_id: z.string().optional(),
+    file_url: z.string().optional(),
+    uploaded_at: z.string().optional(),
+    source: z.string().optional(),
+  })).optional().default([]),
   shipping: z
     .object({
       fee: z.number().nonnegative(),
@@ -263,6 +273,7 @@ export async function POST(req: Request) {
       shipping_discount: Math.min(shippingDiscount, shippingFee),
       shipping_is_free: body.shipping.free,
       created_by: user.id, // Track which user created the order
+      images: body.images || [], // Store images array
     };
 
     // Add delivery coordinates if available (only if columns exist)
@@ -329,6 +340,115 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });
+    console.error("POST /api/orders error:", e);
+    return NextResponse.json({ ok: false, error: "Internal server error" }, { status: 500 });
+  }
+}
+
+/**
+ * GET /api/orders - List orders for authenticated user
+ * 
+ * Query params:
+ *   - status: Filter by exact status (optional)
+ *   - limit: Max results (default 20, max 100)
+ * 
+ * Returns only orders where created_by == user.id
+ */
+export async function GET(req: Request) {
+  try {
+    // Require authenticated user
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
+
+    const { searchParams } = new URL(req.url);
+    
+    // Parse query params
+    const statusFilter = searchParams.get("status");
+    const limitParam = parseInt(searchParams.get("limit") || "20", 10);
+    const limit = Math.min(Math.max(1, limitParam || 20), 100); // Clamp to 1-100
+
+    // Validate status if provided
+    if (statusFilter && !ORDER_STATUSES.includes(statusFilter as any)) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid status value" },
+        { status: 400 }
+      );
+    }
+
+    // Build query - only return orders created by this user
+    // Include customer info and images
+    let query = supabaseAdmin
+      .from("orders")
+      .select(`
+        id, 
+        order_code, 
+        status, 
+        total, 
+        created_at,
+        images,
+        customer_id,
+        customers (
+          id,
+          customer_name,
+          phone_number
+        )
+      `)
+      .eq("created_by", user.id)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    // Apply status filter if provided
+    if (statusFilter) {
+      query = query.eq("status", statusFilter);
+    }
+
+    const { data: orders, error } = await query;
+
+    if (error) {
+      console.error("GET /api/orders error:", error);
+      return NextResponse.json(
+        { ok: false, error: "Failed to fetch orders" },
+        { status: 500 }
+      );
+    }
+
+    // Transform orders to include flattened customer info
+    const transformedOrders = (orders || []).map((o: any) => {
+      const customer = o.customers && !Array.isArray(o.customers) 
+        ? o.customers 
+        : Array.isArray(o.customers) && o.customers.length > 0 
+          ? o.customers[0] 
+          : null;
+      
+      return {
+        id: o.id,
+        order_code: o.order_code,
+        status: o.status,
+        total: o.total,
+        created_at: o.created_at,
+        images: o.images || [],
+        customer: customer ? {
+          id: customer.id,
+          name: customer.customer_name,
+          phone: customer.phone_number,
+        } : null,
+      };
+    });
+
+    return NextResponse.json({
+      ok: true,
+      orders: transformedOrders,
+      meta: {
+        count: transformedOrders.length,
+        limit,
+      },
+    });
+  } catch (e: any) {
+    console.error("GET /api/orders unexpected error:", e);
+    return NextResponse.json(
+      { ok: false, error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

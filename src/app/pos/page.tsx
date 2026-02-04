@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/app/lib/supabaseClient";
 
 type ProductRow = {
@@ -270,6 +271,7 @@ export default function PosPage() {
   const [shippingDiscount, setShippingDiscount] = useState<number>(0);
 
   const [creatingOrder, setCreatingOrder] = useState(false);
+  const [lastOrderCode, setLastOrderCode] = useState<string | null>(null);
 
   // Product Picker Modal state
   const [showProductModal, setShowProductModal] = useState(false);
@@ -990,6 +992,7 @@ export default function PosPage() {
     }
     
     setCreatingOrder(true);
+    setLastOrderCode(null); // Clear previous order code before new submission
     try {
       // Build clean note (only user note, no platform/store/shipping)
       const cleanNote = note.trim() || "";
@@ -1090,6 +1093,9 @@ export default function PosPage() {
 
       alert(`✅ Tạo đơn thành công!\nOrder ID: ${json.order?.id || ""}\nOrder code: ${json.order?.order_code || ""}`);
 
+      // Store last order code for "View orders" link
+      setLastOrderCode(json.order?.order_code || null);
+
       // Clear all form data for new order
       setLines([newLine()]);
       setPromotionCode("");
@@ -1106,6 +1112,7 @@ export default function PosPage() {
       setDefaultAddress("");
       setAddrQuery("");
       setCustomerSuggestions([]);
+      // Note: lastOrderCode is NOT cleared - kept for "View orders" link
     } catch (e: any) {
       alert(`Tạo đơn thất bại: ${e.message || "Unknown error"}`);
     } finally {
@@ -2067,6 +2074,23 @@ export default function PosPage() {
           >
             {creatingOrder ? "Đang tạo đơn..." : quoting ? "Đang quote..." : "Đặt đơn"}
           </button>
+
+          {/* Show "View orders" link after successful order creation */}
+          {lastOrderCode && (
+            <Link
+              href="/orders"
+              style={{
+                display: "block",
+                marginTop: 10,
+                textAlign: "center",
+                color: "var(--color-interactive-primary)",
+                fontSize: 13,
+                textDecoration: "underline",
+              }}
+            >
+              ✅ Đơn #{lastOrderCode} đã tạo — Xem danh sách đơn hàng →
+            </Link>
+          )}
         </div>
       </div>
 

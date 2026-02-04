@@ -1,37 +1,48 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/app/lib/supabaseAdmin";
+import {
+  ORDER_STATUSES,
+  OrderStatus,
+  TELEGRAM_STATUS_LABELS,
+  VALID_TRANSITIONS,
+} from "@/app/lib/constants/orderStatus";
 
 export const runtime = "nodejs";
 
-const TELEGRAM_BOT_TOKEN = "8459588064:AAEeHFwkr0hnaM19rVZyy3isJgsBQgabJ78";
+// Hardcoded fallback token (same as send route) - in production, use env only
+const FALLBACK_BOT_TOKEN = "8459588064:AAEeHFwkr0hnaM19rVZyy3isJgsBQgabJ78";
 
-// Status labels in Vietnamese
-const STATUS_LABELS: Record<string, string> = {
-  PLACED: "📤 Đã bắn đơn",
-  CONFIRMED: "✅ Cơ sở xác nhận",
-  SHIPPING: "🚚 Đang vận chuyển",
-  COMPLETED: "🎉 Hoàn thành",
-};
+// Token loaded from environment with fallback
+function getTelegramBotToken(): string {
+  return process.env.TELEGRAM_BOT_TOKEN || FALLBACK_BOT_TOKEN;
+}
 
 // Build inline keyboard for status buttons
-function buildStatusKeyboard(orderId: string, currentStatus: string) {
-  const statuses = ["PLACED", "CONFIRMED", "SHIPPING", "COMPLETED"];
-  const currentIdx = statuses.indexOf(currentStatus);
+function buildStatusKeyboard(orderId: string, currentStatus: OrderStatus) {
+  const validNext = VALID_TRANSITIONS[currentStatus].filter(s => s !== "CANCELLED");
   
   const buttons = [];
   
-  // Show next status button if not completed
-  if (currentIdx < statuses.length - 1) {
-    const nextStatus = statuses[currentIdx + 1];
+  // Show next status button if available
+  if (validNext.length > 0) {
+    const nextStatus = validNext[0];
     buttons.push([{
-      text: `➡️ ${STATUS_LABELS[nextStatus]}`,
+      text: `➡️ ${TELEGRAM_STATUS_LABELS[nextStatus]}`,
       callback_data: `status:${orderId}:${nextStatus}`,
+    }]);
+  }
+  
+  // Add send image button (only for non-completed orders)
+  if (currentStatus !== "COMPLETED" && currentStatus !== "CANCELLED") {
+    buttons.push([{
+      text: `📷 Gửi hình ảnh`,
+      callback_data: `image:${orderId}`,
     }]);
   }
   
   // Show current status as info
   buttons.push([{
-    text: `📋 Trạng thái: ${STATUS_LABELS[currentStatus]}`,
+    text: `📋 Trạng thái: ${TELEGRAM_STATUS_LABELS[currentStatus]}`,
     callback_data: `info:${orderId}`,
   }]);
   
@@ -39,8 +50,8 @@ function buildStatusKeyboard(orderId: string, currentStatus: string) {
 }
 
 // Answer callback query (acknowledge button press)
-async function answerCallback(callbackQueryId: string, text: string) {
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+async function answerCallback(callbackQueryId: string, text: string, token: string) {
+  await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -52,8 +63,8 @@ async function answerCallback(callbackQueryId: string, text: string) {
 }
 
 // Edit message reply markup (update buttons)
-async function editMessageReplyMarkup(chatId: number, messageId: number, replyMarkup: any) {
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageReplyMarkup`, {
+async function editMessageReplyMarkup(chatId: number, messageId: number, replyMarkup: any, token: string) {
+  await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -64,18 +75,82 @@ async function editMessageReplyMarkup(chatId: number, messageId: number, replyMa
   });
 }
 
+// Send a message to a chat
+async function sendMessage(chatId: number, text: string, token: string, replyMarkup?: any) {
+  const body: any = {
+    chat_id: chatId,
+    text,
+    parse_mode: "Markdown",
+  };
+  if (replyMarkup) {
+    body.reply_markup = replyMarkup;
+  }
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// Get file download URL from Telegram
+async function getFileUrl(fileId: string, token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+    const data = await res.json();
+    if (data.ok && data.result?.file_path) {
+      return `https://api.telegram.org/file/bot${token}/${data.result.file_path}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// In-memory store for pending image uploads (order_id -> chat_id mapping)
+// In production, use Redis or database for persistence across instances
+const pendingImageUploads = new Map<string, { chatId: number; messageId?: number; expiresAt: number }>();
+
+// Clean up expired entries
+function cleanupExpired() {
+  const now = Date.now();
+  for (const [key, value] of pendingImageUploads.entries()) {
+    if (value.expiresAt < now) {
+      pendingImageUploads.delete(key);
+    }
+  }
+}
+
 export async function POST(req: Request) {
+  // Get bot token (always available due to fallback)
+  const token = getTelegramBotToken();
+  console.log("[Telegram Webhook] Received update, token available:", !!token);
+
+  // Verify webhook secret if configured (optional but recommended)
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const headerSecret = req.headers.get("X-Telegram-Bot-Api-Secret-Token");
+    if (headerSecret !== webhookSecret) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+  }
+
   try {
     const update = await req.json();
     
     // Handle callback query (button press)
     if (update.callback_query) {
-      const { id: callbackId, data, message } = update.callback_query;
+      const { id: callbackId, data, message, from } = update.callback_query;
       const chatId = message?.chat?.id;
       const messageId = message?.message_id;
       
+      console.log(`[Telegram Callback] User ${from?.username || from?.id} pressed: ${data}`);
+      
       if (!data) {
-        await answerCallback(callbackId, "Invalid callback");
+        console.log("[Telegram Callback] No data in callback");
+        await answerCallback(callbackId, "Invalid callback", token);
         return NextResponse.json({ ok: true });
       }
       
@@ -92,16 +167,51 @@ export async function POST(req: Request) {
           .eq("id", orderId)
           .single();
           
-        const status = order?.status || "PLACED";
-        await answerCallback(callbackId, `Đơn #${order?.order_code}: ${STATUS_LABELS[status]}`);
+        const status = (order?.status || "PLACED") as OrderStatus;
+        await answerCallback(callbackId, `Đơn #${order?.order_code}: ${TELEGRAM_STATUS_LABELS[status]}`, token);
+        return NextResponse.json({ ok: true });
+      }
+      
+      if (action === "image") {
+        // User wants to send an image for this order
+        // Store pending upload state
+        cleanupExpired();
+        pendingImageUploads.set(orderId, {
+          chatId,
+          messageId,
+          expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes expiry
+        });
+        
+        await answerCallback(callbackId, "📷 Vui lòng gửi hình ảnh cho đơn hàng này", token);
+        
+        // Send instruction message
+        await sendMessage(
+          chatId,
+          `📷 *Gửi hình ảnh cho đơn hàng*\n\nVui lòng gửi hình ảnh (photo) trong vòng 5 phút.\n\n_Hình ảnh sẽ được lưu vào đơn hàng._`,
+          token,
+          {
+            inline_keyboard: [[{
+              text: "❌ Huỷ",
+              callback_data: `cancel_image:${orderId}`,
+            }]],
+          }
+        );
+        
+        return NextResponse.json({ ok: true });
+      }
+      
+      if (action === "cancel_image") {
+        // Cancel pending image upload
+        pendingImageUploads.delete(orderId);
+        await answerCallback(callbackId, "Đã huỷ gửi hình ảnh", token);
         return NextResponse.json({ ok: true });
       }
       
       if (action === "status") {
-        const newStatus = parts[2];
+        const newStatus = parts[2] as OrderStatus;
         
-        if (!["PLACED", "CONFIRMED", "SHIPPING", "COMPLETED"].includes(newStatus)) {
-          await answerCallback(callbackId, "Trạng thái không hợp lệ");
+        if (!ORDER_STATUSES.includes(newStatus)) {
+          await answerCallback(callbackId, "Trạng thái không hợp lệ", token);
           return NextResponse.json({ ok: true });
         }
         
@@ -113,27 +223,21 @@ export async function POST(req: Request) {
           .single();
           
         if (fetchErr || !order) {
-          await answerCallback(callbackId, "Không tìm thấy đơn hàng");
+          await answerCallback(callbackId, "Không tìm thấy đơn hàng", token);
           return NextResponse.json({ ok: true });
         }
         
-        // Validate status transition (can only move forward)
-        const statuses = ["PLACED", "CONFIRMED", "SHIPPING", "COMPLETED"];
-        const currentIdx = statuses.indexOf(order.status);
-        const newIdx = statuses.indexOf(newStatus);
+        // Validate status transition using VALID_TRANSITIONS
+        const currentStatus = order.status as OrderStatus;
+        const allowedNext = VALID_TRANSITIONS[currentStatus];
         
-        if (newIdx <= currentIdx) {
-          await answerCallback(callbackId, "Không thể quay lại trạng thái trước");
+        if (!allowedNext.includes(newStatus)) {
+          await answerCallback(callbackId, "Không thể chuyển sang trạng thái này", token);
           return NextResponse.json({ ok: true });
         }
         
-        // Update order status
-        const updateData: any = { status: newStatus };
-        const now = new Date().toISOString();
-        
-        if (newStatus === "CONFIRMED") updateData.status_confirmed_at = now;
-        if (newStatus === "SHIPPING") updateData.status_shipping_at = now;
-        if (newStatus === "COMPLETED") updateData.status_completed_at = now;
+        // Update order status (only status field - timestamp columns may not exist)
+        const updateData: Record<string, any> = { status: newStatus };
         
         const { error: updateErr } = await supabaseAdmin
           .from("orders")
@@ -141,25 +245,129 @@ export async function POST(req: Request) {
           .eq("id", orderId);
           
         if (updateErr) {
-          console.error("Update order status error:", updateErr);
-          await answerCallback(callbackId, "Lỗi cập nhật trạng thái");
+          console.error("[Telegram Callback] Update order status error:", updateErr);
+          await answerCallback(callbackId, "Lỗi cập nhật trạng thái", token);
           return NextResponse.json({ ok: true });
         }
         
+        console.log(`[Telegram Callback] Order ${order.order_code} status updated to ${newStatus}`);
+        
         // Update message buttons
         if (chatId && messageId) {
-          await editMessageReplyMarkup(chatId, messageId, buildStatusKeyboard(orderId, newStatus));
+          await editMessageReplyMarkup(chatId, messageId, buildStatusKeyboard(orderId, newStatus), token);
         }
         
-        await answerCallback(callbackId, `✅ Đã chuyển sang: ${STATUS_LABELS[newStatus]}`);
+        // Send confirmation with answerCbQuery
+        await answerCallback(callbackId, `✅ Đã chuyển sang: ${TELEGRAM_STATUS_LABELS[newStatus]}`, token);
+        
+        // Also send a new message to confirm
+        await sendMessage(
+          chatId,
+          `✅ *Đơn #${order.order_code}* đã được cập nhật\n\nTrạng thái mới: *${TELEGRAM_STATUS_LABELS[newStatus]}*`,
+          token
+        );
+        
         return NextResponse.json({ ok: true });
       }
       
-      await answerCallback(callbackId, "Unknown action");
+      await answerCallback(callbackId, "Unknown action", token);
       return NextResponse.json({ ok: true });
     }
     
-    // Other update types (messages, etc.) - ignore for now
+    // Handle photo messages
+    if (update.message?.photo) {
+      const message = update.message;
+      const chatId = message.chat?.id;
+      const photos = message.photo; // Array of PhotoSize objects, sorted by size
+      
+      if (!chatId || !photos || photos.length === 0) {
+        return NextResponse.json({ ok: true });
+      }
+      
+      // Get the largest photo (last in array)
+      const largestPhoto = photos[photos.length - 1];
+      const fileId = largestPhoto.file_id;
+      
+      // Check if there's a pending image upload for any order from this chat
+      cleanupExpired();
+      let matchedOrderId: string | null = null;
+      
+      for (const [orderId, pending] of pendingImageUploads.entries()) {
+        if (pending.chatId === chatId) {
+          matchedOrderId = orderId;
+          break;
+        }
+      }
+      
+      if (!matchedOrderId) {
+        // No pending upload - inform user
+        await sendMessage(
+          chatId,
+          "⚠️ Không có đơn hàng nào đang chờ hình ảnh.\n\nVui lòng nhấn nút \"📷 Gửi hình ảnh\" trong tin nhắn đơn hàng trước.",
+          token
+        );
+        return NextResponse.json({ ok: true });
+      }
+      
+      // Get file URL from Telegram
+      const fileUrl = await getFileUrl(fileId, token);
+      
+      // Get order info
+      const { data: order, error: orderErr } = await supabaseAdmin
+        .from("orders")
+        .select("id, order_code, status, images")
+        .eq("id", matchedOrderId)
+        .single();
+      
+      if (orderErr || !order) {
+        await sendMessage(chatId, "❌ Không tìm thấy đơn hàng.", token);
+        pendingImageUploads.delete(matchedOrderId);
+        return NextResponse.json({ ok: true });
+      }
+      
+      // Store image info in order
+      const existingImages = Array.isArray(order.images) ? order.images : [];
+      const newImage = {
+        file_id: fileId,
+        file_url: fileUrl,
+        uploaded_at: new Date().toISOString(),
+        source: "telegram",
+      };
+      
+      const { error: updateErr } = await supabaseAdmin
+        .from("orders")
+        .update({
+          images: [...existingImages, newImage],
+        })
+        .eq("id", matchedOrderId);
+      
+      // Clean up pending upload
+      pendingImageUploads.delete(matchedOrderId);
+      
+      if (updateErr) {
+        console.error("Failed to save image:", updateErr);
+        await sendMessage(chatId, "❌ Lỗi lưu hình ảnh. Vui lòng thử lại.", token);
+        return NextResponse.json({ ok: true });
+      }
+      
+      // Send success message
+      const imageCount = existingImages.length + 1;
+      await sendMessage(
+        chatId,
+        `✅ *Đã nhận hình ảnh!*\n\nĐơn hàng #${order.order_code} hiện có ${imageCount} hình ảnh.\n\n_Cảm ơn bạn đã gửi hình ảnh._`,
+        token
+      );
+      
+      return NextResponse.json({ ok: true });
+    }
+    
+    // Handle text messages (for potential order ID replies)
+    if (update.message?.text) {
+      // Could implement order lookup by code here if needed
+      return NextResponse.json({ ok: true });
+    }
+    
+    // Other update types - ignore
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("Telegram webhook error:", e);
@@ -167,47 +375,7 @@ export async function POST(req: Request) {
   }
 }
 
-// GET endpoint to set webhook URL
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const action = searchParams.get("action");
-  
-  if (action === "set") {
-    // Set webhook to this endpoint
-    const webhookUrl = searchParams.get("url");
-    if (!webhookUrl) {
-      return NextResponse.json({ ok: false, error: "Missing url param" }, { status: 400 });
-    }
-    
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: webhookUrl }),
-    });
-    
-    const data = await res.json();
-    return NextResponse.json(data);
-  }
-  
-  if (action === "info") {
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo`);
-    const data = await res.json();
-    return NextResponse.json(data);
-  }
-  
-  if (action === "delete") {
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook`);
-    const data = await res.json();
-    return NextResponse.json(data);
-  }
-  
-  return NextResponse.json({ 
-    ok: true, 
-    message: "Telegram webhook endpoint",
-    actions: {
-      set: "GET /api/telegram/webhook?action=set&url=YOUR_WEBHOOK_URL",
-      info: "GET /api/telegram/webhook?action=info",
-      delete: "GET /api/telegram/webhook?action=delete",
-    }
-  });
+// GET is disabled to prevent public access in production
+export async function GET() {
+  return NextResponse.json({ ok: false, error: "Method not allowed" }, { status: 405 });
 }
