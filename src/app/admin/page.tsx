@@ -299,7 +299,7 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
       ].filter(Boolean);
       return parts.join(", ") || "-";
     }
-    
+
     // Fallback: parse from address_full
     if (!store.address_full) return "-";
     const parts = store.address_full.split(",").map(p => p.trim());
@@ -375,7 +375,7 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
   // Sort stores
   const sortedStores = [...stores].sort((a, b) => {
     let compareResult = 0;
-    
+
     if (sortBy === "name") {
       compareResult = a.name.localeCompare(b.name);
     } else if (sortBy === "province") {
@@ -385,7 +385,7 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
     } else if (sortBy === "updated") {
       compareResult = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
     }
-    
+
     return sortOrder === "asc" ? compareResult : -compareResult;
   });
 
@@ -432,21 +432,21 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${colors.border.light}`, background: colors.bg.tertiary }}>
-                <th 
+                <th
                   onClick={() => handleSort("name")}
                   style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
                   Name {sortBy === "name" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
                 <th style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, fontSize: typography.fontSize.sm }}>Address</th>
-                <th 
+                <th
                   onClick={() => handleSort("province")}
                   style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
                   Province/Region {sortBy === "province" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
                 <th style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, fontSize: typography.fontSize.sm }}>Active</th>
-                <th 
+                <th
                   onClick={() => handleSort("updated")}
                   style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
@@ -459,7 +459,7 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
               {sortedStores.map((store) => {
                 // Display line1 if available, otherwise show truncated address_full
                 const displayAddress = store.addr_line1 || store.address_full || "-";
-                
+
                 return (
                   <tr key={store.id} style={{ borderBottom: `1px solid ${colors.border.light}` }}>
                     <td style={{ padding: spacing['12'], color: colors.text.primary }}>{store.name}</td>
@@ -555,7 +555,7 @@ function StoreModal({
   const [addrError, setAddrError] = useState<string | null>(null);
   const [addrSessionToken] = useState(() => `store-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
-  
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -580,7 +580,7 @@ function StoreModal({
 
     try {
       const res = await fetch(
-        `/api/places/autocomplete?input=${encodeURIComponent(query)}&sessionToken=${addrSessionToken}`,
+        `/api/geoapify/autocomplete?q=${encodeURIComponent(query)}&limit=6`,
         { signal: abortControllerRef.current.signal }
       );
 
@@ -629,13 +629,28 @@ function StoreModal({
     setSelectedPlaceId(item.place_id);
 
     try {
-      const res = await fetch(
-        `/api/places/details?placeId=${encodeURIComponent(item.place_id)}&sessionToken=${addrSessionToken}`
-      );
+      console.debug('[POS] Using Geoapify autocomplete item as-is:', item);
 
-      if (!res.ok) throw new Error("Failed to fetch place details");
+      // Extract lat/lng directly from Geoapify properties if available
+      const latVal = item.raw?.properties?.lat || item.lat;
+      const lngVal = item.raw?.properties?.lon || item.lon;
 
-      const data = await res.json();
+      const enrichedData = {
+        ...item,
+        lat: latVal,
+        lon: lngVal,
+        lng: lngVal, // Add alias
+        display_name: item.display_name || item.raw?.properties?.formatted,
+        address: {
+          line1: item.raw?.properties?.address_line1,
+          ward: item.raw?.properties?.suburb,
+          district: item.raw?.properties?.district || item.raw?.properties?.county,
+          city: item.raw?.properties?.city || item.raw?.properties?.state,
+        }
+      };
+
+      const data = { ok: true, ...enrichedData, full_address: enrichedData.display_name };
+
       if (data.ok) {
         // Extract structured address from response
         const addr = data.address || {};
@@ -714,10 +729,10 @@ function StoreModal({
       alert("Name is required");
       return;
     }
-    
+
     // Sync addrQuery to addressFull before saving
     const finalAddress = addrQuery.trim() || null;
-    
+
     // Show warning if no coordinates (manual input)
     if (!lat || !lng) {
       const confirmed = confirm(
@@ -727,7 +742,7 @@ function StoreModal({
       );
       if (!confirmed) return;
     }
-    
+
     onSave({
       name: name.trim(),
       address_full: finalAddress,
@@ -1855,17 +1870,17 @@ function ProductModal({
   const [name, setName] = useState(product?.name || "");
   const [category, setCategory] = useState(product?.category || "");
   const [isActive, setIsActive] = useState(product?.is_active ?? true);
-  
+
   // Price mode: "single" (STD only) or "multi" (PHE/LA/STD)
   const [priceMode, setPriceMode] = useState<"single" | "multi">("single");
   const [priceSTD, setPriceSTD] = useState(product?.prices.STD?.toString() || "");
   const [pricePHE, setPricePHE] = useState(product?.prices.SIZE_PHE?.toString() || "");
   const [priceLA, setPriceLA] = useState(product?.prices.SIZE_LA?.toString() || "");
-  
+
   // Categories dropdown
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
-  
+
   // Code generation
   const [codeManuallyEdited, setCodeManuallyEdited] = useState(!!product); // If editing, code was manually set
   const [codeEditing, setCodeEditing] = useState(false);
@@ -1934,7 +1949,7 @@ function ProductModal({
     }
 
     const prices: any = {};
-    
+
     if (priceMode === "single") {
       if (priceSTD.trim() && !isNaN(parseFloat(priceSTD))) {
         prices.STD = parseFloat(priceSTD);
@@ -2243,7 +2258,7 @@ function SubcategoriesTab({ setError }: { setError: (msg: string | null) => void
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (filterCategory) params.set("category_code", filterCategory);
-      
+
       const res = await fetch(`/api/admin/subcategories?${params.toString()}`);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
@@ -2298,7 +2313,7 @@ function SubcategoriesTab({ setError }: { setError: (msg: string | null) => void
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this subcategory?")) return;
-    
+
     setError(null);
     try {
       const res = await fetch(`/api/admin/subcategories?id=${id}`, { method: "DELETE" });
@@ -2381,8 +2396,8 @@ function SubcategoriesTab({ setError }: { setError: (msg: string | null) => void
                     </button>
                     <button
                       onClick={() => handleDelete(sub.id)}
-                      style={{ 
-                        ...sharedStyles.secondaryButton, 
+                      style={{
+                        ...sharedStyles.secondaryButton,
                         padding: `${spacing['8']} ${spacing['12']}`,
                         color: colors.status.error,
                         borderColor: colors.status.error,
@@ -2626,7 +2641,7 @@ function ProductMappingTab({ setError }: { setError: (msg: string | null) => voi
 
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this mapping?")) return;
-    
+
     setError(null);
     try {
       const res = await fetch(`/api/admin/product-mapping?id=${id}`, { method: "DELETE" });
@@ -2699,8 +2714,8 @@ function ProductMappingTab({ setError }: { setError: (msg: string | null) => voi
                     </button>
                     <button
                       onClick={() => handleDelete(m.id)}
-                      style={{ 
-                        ...sharedStyles.secondaryButton, 
+                      style={{
+                        ...sharedStyles.secondaryButton,
                         padding: `${spacing['8']} ${spacing['12']}`,
                         color: colors.status.error,
                         borderColor: colors.status.error,

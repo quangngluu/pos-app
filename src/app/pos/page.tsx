@@ -311,19 +311,19 @@ export default function PosPage() {
     (async () => {
       setStoreLoading(true);
       setStoreError("");
-      
+
       try {
         const res = await fetch(
           `/api/stores/nearest?lat=${lat}&lng=${lng}&limit=5`,
           { signal: controller.signal }
         );
         const data = await res.json();
-        
+
         if (!isLatest) return;
-        
+
         if (data.ok && data.items?.length > 0) {
           setStoreSuggestions(data.items);
-          
+
           // Auto-select nearest store (first in list)
           const nearest = data.items[0];
           setStoreId(nearest.id);
@@ -360,7 +360,7 @@ export default function PosPage() {
   useEffect(() => {
     async function loadInitialData() {
       setLoadingProducts(true);
-      
+
       // Parallelize independent async operations
       const [productsResult, promotionsResult] = await Promise.all([
         supabase.from("v_products_menu").select("*").order("name"),
@@ -423,7 +423,7 @@ export default function PosPage() {
     return () => clearTimeout(t);
   }, [phone]);
 
-  // Google Places autocomplete with session token
+  // Geoapify Places autocomplete
   useEffect(() => {
     const q = addrQuery.trim();
     if (q.length < 3) {
@@ -438,7 +438,7 @@ export default function PosPage() {
       return;
     }
 
-    // Generate session token if not exists
+    // Generate session token if not exists (Not needed for Geoapify but keeping state)
     if (!addrSessionToken) {
       const newToken = crypto.randomUUID();
       console.debug('[POS] Autocomplete: generated new session token', newToken);
@@ -450,9 +450,9 @@ export default function PosPage() {
 
     const t = setTimeout(async () => {
       try {
-        const url = `/api/places/autocomplete?q=${encodeURIComponent(q)}${addrSessionToken ? `&sessionToken=${encodeURIComponent(addrSessionToken)}` : ""}&limit=6`;
+        const url = `/api/geoapify/autocomplete?q=${encodeURIComponent(q)}&limit=6`;
         console.debug('[POS] Autocomplete: fetching', { query: q, sessionToken: addrSessionToken });
-        
+
         const res = await fetch(url, {
           method: "GET",
           signal: abortController.signal,
@@ -573,7 +573,7 @@ export default function PosPage() {
         let json: QuoteResult | null = null;
         try {
           json = JSON.parse(text);
-        } catch {}
+        } catch { }
 
         // Double check still latest before updating state
         if (!isLatest) return;
@@ -723,12 +723,12 @@ export default function PosPage() {
   function openProductModal(lineToEdit?: Line) {
     setShowProductModal(true);
     setModalSearchQuery("");
-    
+
     if (lineToEdit && lineToEdit.product_id) {
       // EDIT mode: prefill one draft from existing line
       const product = productById.get(lineToEdit.product_id);
       setEditLineId(lineToEdit.id);
-      
+
       const draft: DraftLine = {
         id: crypto.randomUUID(),
         product_id: lineToEdit.product_id,
@@ -738,7 +738,7 @@ export default function PosPage() {
         note: lineToEdit.note || "",
       };
       setDraftLines([draft]);
-      
+
       // Ensure sugar options loaded for DRINK
       if (product?.category?.includes("DRINK")) {
         ensureSugarOptions(lineToEdit.product_id);
@@ -759,7 +759,7 @@ export default function PosPage() {
   function addProductToDraft(product: ProductRow) {
     const avail = getAvailableSizes(product);
     const defaultSize = avail[0] ?? "STD";
-    
+
     const newDraft: DraftLine = {
       id: crypto.randomUUID(),
       product_id: product.product_id,
@@ -768,9 +768,9 @@ export default function PosPage() {
       sugar_value_code: "",
       note: "",
     };
-    
+
     setDraftLines((prev) => [...prev, newDraft]);
-    
+
     // Fetch default sugar if DRINK
     if (product.category?.includes("DRINK")) {
       fetchSugarOptions(product.product_id).then((opts) => {
@@ -802,14 +802,14 @@ export default function PosPage() {
           prev.map((l) =>
             l.id === editLineId
               ? {
-                  ...l,
-                  product_id: draft.product_id,
-                  product_name_input: product?.name ?? "",
-                  size: draft.size,
-                  sugar_value_code: draft.sugar_value_code,
-                  qty: draft.qty,
-                  note: draft.note,
-                }
+                ...l,
+                product_id: draft.product_id,
+                product_name_input: product?.name ?? "",
+                size: draft.size,
+                sugar_value_code: draft.sugar_value_code,
+                qty: draft.qty,
+                note: draft.note,
+              }
               : l
           )
         );
@@ -828,12 +828,12 @@ export default function PosPage() {
           note: draft.note,
         };
       });
-      
+
       if (itemsToAdd.length > 0) {
         setLines((prev) => {
           const lastLine = prev[prev.length - 1];
           const hasEmptyTrailing = lastLine && !lastLine.product_id && !lastLine.product_name_input;
-          
+
           if (hasEmptyTrailing) {
             return [...prev.slice(0, -1), ...itemsToAdd, lastLine];
           } else {
@@ -842,7 +842,7 @@ export default function PosPage() {
         });
       }
     }
-    
+
     closeProductModal();
   }
 
@@ -960,12 +960,12 @@ export default function PosPage() {
     }
 
     const digits = phone.replace(/\D/g, "");
-    
+
     // BUSINESS RULE C & B: Use line_id for quote lookup, send display_size + price_key to server
     const payloadLines = [];
     for (const l of lines) {
       if (!l.product_id || !isPositiveInt(l.qty)) continue;
-      
+
       const p = productById.get(l.product_id);
       const ql = quoteLineMap.get(l.id); // CRITICAL: lookup by line_id for duplicate products
 
@@ -985,12 +985,12 @@ export default function PosPage() {
         note: l.note || "",
       });
     }
-    
+
     if (!payloadLines.length) {
       alert("Chưa có món để đặt đơn.");
       return;
     }
-    
+
     setCreatingOrder(true);
     setLastOrderCode(null); // Clear previous order code before new submission
     try {
@@ -1038,16 +1038,16 @@ export default function PosPage() {
           const p = productById.get(l.product_id);
           const name = p?.name ?? l.product_name_input ?? "";
           const ql = quoteLineMap.get(l.id);
-          
+
           // Size label
           const displaySize = ql?.display_price_key ?? l.size;
           const sizeLabels: Record<string, string> = { SIZE_PHE: "Phê", SIZE_LA: "La", STD: "" };
           const sizeLabel = sizeLabels[displaySize] || "";
-          
+
           // Sugar label
           const opts = sugarMap[l.product_id];
           const sugarLabel = opts?.find((o) => o.value_code === l.sugar_value_code)?.label ?? "";
-          
+
           const qtyStr = String(l.qty).padStart(2, "0");
           const namePadded = name.padEnd(28, " ");
           const details = [sizeLabel, sugarLabel].filter(Boolean).join(", ");
@@ -1055,12 +1055,12 @@ export default function PosPage() {
         }
 
         // Find promotion name
-        const promoDisplay = promotionCode 
-          ? promotions.find(pr => pr.code === promotionCode)?.name || promotionCode 
+        const promoDisplay = promotionCode
+          ? promotions.find(pr => pr.code === promotionCode)?.name || promotionCode
           : "";
 
         const separator = "─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─";
-        
+
         const telegramMessage = [
           `Loại giao hàng: ${platformName}`,
           promoDisplay ? `CTKM: ${promoDisplay}` : "",
@@ -1080,7 +1080,7 @@ export default function PosPage() {
         fetch("/api/telegram/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             message: telegramMessage,
             chat_id: "646594151",
             order_id: json.order?.id,
@@ -1328,11 +1328,11 @@ export default function PosPage() {
                           {hasPrice && ql?.unit_price_after != null
                             ? `${formatMoney(ql.unit_price_after)}đ`
                             : p
-                            ? (() => {
+                              ? (() => {
                                 const prices = [p.price_phe, p.price_la, p.price_std].filter((x) => x != null && x > 0);
                                 return prices.length > 0 ? `${formatMoney(Math.min(...(prices as number[])))}đ` : "—";
                               })()
-                            : "—"}
+                              : "—"}
                           {p?.product_code && (
                             <span style={{ marginLeft: 6, color: "var(--color-text-muted)", fontSize: 10 }}>({p.product_code})</span>
                           )}
@@ -1547,44 +1547,43 @@ export default function PosPage() {
                     onMouseDown={async (e) => {
                       e.preventDefault();
                       console.debug('[POS] Address selected:', { place_id: it.place_id, display_name: it.display_name });
-                      
+
                       // Clear suggestions and suppress FIRST
                       setAddrSuggestions([]);
                       suppressAddrSearchRef.current = true;
-                      
-                      // Fetch place details to enrich data
+
+                      // Geoapify provides full details in the autocomplete response under 'raw.properties'
                       try {
-                        if (it.place_id) {
-                          const url = `/api/places/details?placeId=${encodeURIComponent(it.place_id)}` +
-                            (addrSessionToken ? `&sessionToken=${encodeURIComponent(addrSessionToken)}` : "");
-                          console.debug('[POS] Fetching place details:', { url, sessionToken: addrSessionToken });
-                          
-                          const res = await fetch(url);
-                          const { ok, json } = await safeReadJson(res);
-                          if (ok && json) {
-                            // Use enriched data with lat/lon/address
-                            console.debug('[POS] Place details received:', json);
-                            setSelectedAddr(json);
-                            setAddrQuery(json.display_name || it.display_name || "");
-                          } else {
-                            console.warn('[POS] Place details failed, using autocomplete data');
-                            // Fallback to autocomplete data
-                            setSelectedAddr(it);
-                            setAddrQuery(it.display_name || "");
+                        console.debug('[POS] Using Geoapify autocomplete item as-is:', it);
+
+                        // Extract lat/lng directly from Geoapify properties if available
+                        const lat = it.raw?.properties?.lat || it.lat;
+                        const lon = it.raw?.properties?.lon || it.lon;
+
+                        const enrichedData = {
+                          ...it,
+                          lat,
+                          lon,
+                          lng: lon, // Add alias
+                          display_name: it.display_name || it.raw?.properties?.formatted,
+                          address: {
+                            line1: it.raw?.properties?.address_line1,
+                            ward: it.raw?.properties?.suburb,
+                            district: it.raw?.properties?.district || it.raw?.properties?.county,
+                            city: it.raw?.properties?.city || it.raw?.properties?.state,
                           }
-                        } else {
-                          console.warn('[POS] No place_id, using autocomplete data as-is');
-                          // No place_id, use as-is
-                          setSelectedAddr(it);
-                          setAddrQuery(it.display_name || "");
-                        }
+                        };
+
+                        setSelectedAddr(enrichedData);
+                        setAddrQuery(enrichedData.display_name || "");
+
                       } catch (err) {
-                        console.error("[POS] Place details fetch error:", err);
+                        console.error("[POS] Address parsing error:", err);
                         // Fallback to autocomplete data
                         setSelectedAddr(it);
                         setAddrQuery(it.display_name || "");
                       }
-                      
+
                       // Reset session token after selection
                       console.debug('[POS] Resetting session token after selection');
                       setAddrSessionToken("");
@@ -1733,7 +1732,7 @@ export default function PosPage() {
                           setStoreDropdownOpen(true);
                         }
                       })
-                      .catch(() => {})
+                      .catch(() => { })
                       .finally(() => setStoreLoading(false));
                   } else if (q === "") {
                     // Show all stores when empty
@@ -1746,7 +1745,7 @@ export default function PosPage() {
                           setStoreDropdownOpen(true);
                         }
                       })
-                      .catch(() => {})
+                      .catch(() => { })
                       .finally(() => setStoreLoading(false));
                   }
                 }}
@@ -1764,7 +1763,7 @@ export default function PosPage() {
                           setStoreDropdownOpen(true);
                         }
                       })
-                      .catch(() => {});
+                      .catch(() => { });
                   }
                 }}
                 onBlur={() => {
@@ -1891,8 +1890,8 @@ export default function PosPage() {
               {quoting
                 ? "⏳ Đang quote..."
                 : quote?.meta?.free_upsize_applied
-                ? `✅ Free upsize áp dụng (DRINK qty: ${quote.meta.drink_qty ?? "?"})`
-                : `ℹ️ Free upsize chưa áp dụng (DRINK qty: ${quote?.meta?.drink_qty ?? "0"})`}
+                  ? `✅ Free upsize áp dụng (DRINK qty: ${quote.meta.drink_qty ?? "?"})`
+                  : `ℹ️ Free upsize chưa áp dụng (DRINK qty: ${quote?.meta?.drink_qty ?? "0"})`}
             </div>
           </div>
 
@@ -2222,7 +2221,7 @@ export default function PosPage() {
                             if (product.price_la != null) priceLabels.push(`La ${formatMoney(product.price_la)}`);
                             if (product.price_std != null && !product.price_phe && !product.price_la) priceLabels.push(`${formatMoney(product.price_std)}`);
                             const hasSizes = (product.price_phe != null ? 1 : 0) + (product.price_la != null ? 1 : 0) >= 2;
-                            
+
                             return (
                               <div
                                 key={product.product_id}
@@ -2282,18 +2281,18 @@ export default function PosPage() {
                         </div>
                       );
                     }
-                    
+
                     // Category sections
                     return categoryList.map((cat) => {
                       const catProducts = baseFiltered.filter((p) => p.category?.includes(cat));
                       if (catProducts.length === 0) return null;
-                      
+
                       return (
                         <div key={cat} style={{ marginBottom: 24 }}>
-                          <h4 style={{ 
-                            margin: "0 0 12px 0", 
+                          <h4 style={{
+                            margin: "0 0 12px 0",
                             padding: "8px 12px",
-                            background: "var(--color-bg-tertiary)", 
+                            background: "var(--color-bg-tertiary)",
                             borderRadius: 6,
                             fontSize: 14,
                             fontWeight: 600,
@@ -2314,7 +2313,7 @@ export default function PosPage() {
                               if (product.price_la != null) priceLabels.push(`La ${formatMoney(product.price_la)}`);
                               if (product.price_std != null && !product.price_phe && !product.price_la) priceLabels.push(`${formatMoney(product.price_std)}`);
                               const hasSizes = (product.price_phe != null ? 1 : 0) + (product.price_la != null ? 1 : 0) >= 2;
-                              
+
                               return (
                                 <div
                                   key={product.product_id}
@@ -2394,7 +2393,7 @@ export default function PosPage() {
                         const availSizes = getAvailableSizes(product ?? null);
                         const isDrink = product?.category?.includes("DRINK");
                         const sugarOpts = isDrink ? sugarMap[draft.product_id] : undefined;
-                        
+
                         return (
                           <div
                             key={draft.id}
@@ -2448,7 +2447,7 @@ export default function PosPage() {
                                 </button>
                               </div>
                             </div>
-                            
+
                             {/* Size - TASK D: always show when has sizes, fix disabled logic */}
                             {availSizes.length >= 1 && (
                               <div style={{ marginBottom: 12 }}>
@@ -2464,7 +2463,7 @@ export default function PosPage() {
                                 />
                               </div>
                             )}
-                            
+
                             {/* Sugar */}
                             {isDrink && (
                               <div style={{ marginBottom: 12 }}>
@@ -2477,8 +2476,8 @@ export default function PosPage() {
                                       sugarOpts === undefined
                                         ? [{ value: "", label: "(loading...)", disabled: true }]
                                         : sugarOpts.length === 0
-                                        ? [{ value: "", label: "—", disabled: true }]
-                                        : sugarOpts.map((o) => ({
+                                          ? [{ value: "", label: "—", disabled: true }]
+                                          : sugarOpts.map((o) => ({
                                             value: o.value_code,
                                             label: o.label
                                               .replace(/\s*đường\s*$/i, "")
@@ -2495,7 +2494,7 @@ export default function PosPage() {
                                 </div>
                               </div>
                             )}
-                            
+
                             {/* Note */}
                             <div style={{ marginBottom: 12 }}>
                               <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Ghi chú:</div>
@@ -2515,7 +2514,7 @@ export default function PosPage() {
                                 }}
                               />
                             </div>
-                            
+
                             {/* Remove */}
                             <button
                               onClick={() => removeDraftLine(draft.id)}
