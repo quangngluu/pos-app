@@ -483,7 +483,7 @@ export async function quoteOrder(input: {
     ========================= */
     let subtotalBefore = 0;
     let discountTotal = 0;
-    let eligibleLineIds: string[] = [];
+    const eligibleLineIds: string[] = [];
 
     // Helper: check if line is eligible for promotion (multi-level checking)
     const isLineEligible = (

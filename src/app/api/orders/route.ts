@@ -4,6 +4,7 @@ import { ORDER_STATUSES } from "@/app/lib/constants/orderStatus";
 import { supabaseAdmin } from "@/app/lib/supabaseAdmin";
 import { quoteOrder } from "@/app/lib/pricingEngine";
 import { requireUser } from "@/app/lib/requireAuth";
+import { sendTelegramOrderMessage } from "@/app/lib/telegramAdmin";
 
 // Force dynamic rendering - user-specific data must not be cached
 export const dynamic = "force-dynamic";
@@ -84,7 +85,7 @@ function parseAddressFromSelected(addrSelected: any, defaultAddress?: string) {
   // Extract fields from new API: { place_id, display_name, full_address, lat, lng, lon, address: {...} }
   const placeId = getString(addrSelected.place_id) ?? null;
   const fullAddress = getString(addrSelected.full_address) ?? getString(addrSelected.display_name) ?? null;
-  
+
   // Accept both lng and lon (lon is alias for backward compatibility)
   const lat = parseCoord(addrSelected.lat) ?? null;
   const lng = parseCoord(addrSelected.lng) ?? parseCoord(addrSelected.lon) ?? null;
@@ -327,6 +328,44 @@ export async function POST(req: Request) {
       if (promoErr) console.warn("order_applied_promotions insert error:", promoErr);
     }
 
+    // 5) notify store via Telegram
+    try {
+      const origin = req.headers.get("origin") || req.headers.get("referer");
+      let baseUrl;
+      if (origin) {
+        baseUrl = new URL(origin).origin;
+      }
+
+      const formatMoney = (n: number) => n.toLocaleString("vi-VN") + "đ";
+
+      const lineItemsText = linesToInsert.map(l =>
+        `- ${l.qty}x ${l.product_name_snapshot} (${l.price_key_snapshot.replace("SIZE_", "")})` +
+        (l.options_snapshot.sugar_value_code ? ` - ${l.options_snapshot.sugar_value_code}% đường` : "") +
+        (l.note ? `\n  _Ghi chú: ${l.note}_` : "")
+      ).join("\n");
+
+      let telegramMessage = ``;
+      telegramMessage += `Khách: *${customerName || "Khách Vãng Lai"}* (${phoneNumber})\n`;
+      telegramMessage += `Tổng: *${formatMoney(grandTotal)}*\n\n`;
+      telegramMessage += `📦 *Món ăn:*\n${lineItemsText}\n\n`;
+      if (cleanNote) telegramMessage += `📝 *Ghi chú chung:*\n${cleanNote}\n\n`;
+      telegramMessage += `📍 *Giao đến:*\n${fullAddress || "Nhận tại cửa hàng"}`;
+
+      // We run this without awaiting it fully blocking the client response,
+      // but await it here to ensure it finishes or fails gracefully if serverless 
+      // functions shut down immediately. Actually, since this is Next.js App router, 
+      // we await it to guarantee execution.
+      await sendTelegramOrderMessage({
+        message: telegramMessage,
+        order_code: order.order_code,
+        order_id: orderId,
+        baseUrl
+      });
+    } catch (teleErr) {
+      console.error("Failed to send telegram notification:", teleErr);
+      // We don't fail the order if Telegram fails
+    }
+
     return NextResponse.json(
       {
         ok: true,
@@ -362,7 +401,7 @@ export async function GET(req: Request) {
     const { user } = auth;
 
     const { searchParams } = new URL(req.url);
-    
+
     // Parse query params
     const statusFilter = searchParams.get("status");
     const limitParam = parseInt(searchParams.get("limit") || "20", 10);
@@ -415,12 +454,12 @@ export async function GET(req: Request) {
 
     // Transform orders to include flattened customer info
     const transformedOrders = (orders || []).map((o: any) => {
-      const customer = o.customers && !Array.isArray(o.customers) 
-        ? o.customers 
-        : Array.isArray(o.customers) && o.customers.length > 0 
-          ? o.customers[0] 
+      const customer = o.customers && !Array.isArray(o.customers)
+        ? o.customers
+        : Array.isArray(o.customers) && o.customers.length > 0
+          ? o.customers[0]
           : null;
-      
+
       return {
         id: o.id,
         order_code: o.order_code,

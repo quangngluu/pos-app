@@ -52,6 +52,9 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q") || "";
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const limit = parseInt(searchParams.get("limit") || "20", 10);
+  const offset = (page - 1) * limit;
 
   try {
     let query = supabaseAdmin
@@ -61,18 +64,19 @@ export async function GET(request: NextRequest) {
         addr_line1, addr_ward, addr_district, addr_city, addr_state, 
         addr_postcode, addr_country, addr_place_id, addr_display_name,
         updated_at, created_at
-      `)
-      .order("created_at", { ascending: false });
+      `, { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (q) {
       query = query.or(`name.ilike.%${q}%,address_full.ilike.%${q}%`);
     }
 
-    const { data, error } = await query;
+    const { data, count, error } = await query;
 
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, stores: data || [] });
+    return NextResponse.json({ ok: true, stores: data || [], total: count || 0, page, limit });
   } catch (error: any) {
     console.error("GET /api/admin/stores error:", error);
     return NextResponse.json(
@@ -121,7 +125,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, store: data });
   } catch (error: any) {
     console.error("POST /api/admin/stores error:", error);
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { ok: false, error: "Validation failed", details: error.issues },
@@ -174,7 +178,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true, store: data });
   } catch (error: any) {
     console.error("PATCH /api/admin/stores error:", error);
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { ok: false, error: "Validation failed", details: error.issues },

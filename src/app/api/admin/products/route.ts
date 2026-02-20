@@ -14,6 +14,7 @@ const createProductSchema = z.object({
   code: z.string().min(1, "Code is required"),
   name: z.string().min(1, "Name is required"),
   category_code: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
   subcategory_id: z.string().uuid().optional().nullable(),
   menu_section: z.string().optional().nullable(),
   is_active: z.boolean().optional().default(true),
@@ -26,6 +27,7 @@ const patchProductSchema = z.object({
     code: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     category_code: z.string().optional().nullable(),
+    category: z.string().optional().nullable(),
     subcategory_id: z.string().uuid().optional().nullable(),
     menu_section: z.string().optional().nullable(),
     is_active: z.boolean().optional(),
@@ -77,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch prices for all products (from variants first, fallback to legacy)
     const productIds = products.map((p) => p.id);
-    
+
     // Try variant pricing first
     const { data: variantsData, error: variantsError } = await supabaseAdmin
       .from("product_variants")
@@ -94,17 +96,17 @@ export async function GET(request: NextRequest) {
     // Build price map from variants
     const pricesMap = new Map<string, Record<string, number>>();
     const productsWithVariants = new Set<string>();
-    
+
     (variantsData || []).forEach((v) => {
       if (!pricesMap.has(v.product_id)) {
         pricesMap.set(v.product_id, {});
       }
       productsWithVariants.add(v.product_id);
-      
+
       const priceRecord = Array.isArray(v.product_variant_prices)
         ? v.product_variant_prices[0]
         : v.product_variant_prices;
-      
+
       if (priceRecord?.price_vat_incl != null) {
         pricesMap.get(v.product_id)![v.size_key] = Number(priceRecord.price_vat_incl);
       }
@@ -160,9 +162,8 @@ export async function POST(request: NextRequest) {
     };
 
     // Add optional columns if they're provided (handle migration state)
-    if (validated.category_code !== undefined) {
-      insertData.category_code = validated.category_code;
-    }
+    if (validated.category_code !== undefined) insertData.category_code = validated.category_code;
+    if (validated.category !== undefined) insertData.category = validated.category;
     if (validated.subcategory_id !== undefined) {
       insertData.subcategory_id = validated.subcategory_id;
     }
@@ -261,7 +262,7 @@ export async function PATCH(request: NextRequest) {
       // Delete prices not in the current mode (clean up unused keys)
       if (validated.priceMode) {
         const keysToDelete: string[] = [];
-        
+
         if (validated.priceMode === "single") {
           // Single mode: only keep STD, remove SIZE_PHE and SIZE_LA
           keysToDelete.push("SIZE_PHE", "SIZE_LA");

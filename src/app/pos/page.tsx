@@ -311,19 +311,19 @@ export default function PosPage() {
     (async () => {
       setStoreLoading(true);
       setStoreError("");
-      
+
       try {
         const res = await fetch(
           `/api/stores/nearest?lat=${lat}&lng=${lng}&limit=5`,
           { signal: controller.signal }
         );
         const data = await res.json();
-        
+
         if (!isLatest) return;
-        
+
         if (data.ok && data.items?.length > 0) {
           setStoreSuggestions(data.items);
-          
+
           // Auto-select nearest store (first in list)
           const nearest = data.items[0];
           setStoreId(nearest.id);
@@ -360,7 +360,7 @@ export default function PosPage() {
   useEffect(() => {
     async function loadInitialData() {
       setLoadingProducts(true);
-      
+
       // Parallelize independent async operations
       const [productsResult, promotionsResult] = await Promise.all([
         supabase.from("v_products_menu").select("*").order("name"),
@@ -452,7 +452,7 @@ export default function PosPage() {
       try {
         const url = `/api/places/autocomplete?q=${encodeURIComponent(q)}${addrSessionToken ? `&sessionToken=${encodeURIComponent(addrSessionToken)}` : ""}&limit=6`;
         console.debug('[POS] Autocomplete: fetching', { query: q, sessionToken: addrSessionToken });
-        
+
         const res = await fetch(url, {
           method: "GET",
           signal: abortController.signal,
@@ -573,7 +573,7 @@ export default function PosPage() {
         let json: QuoteResult | null = null;
         try {
           json = JSON.parse(text);
-        } catch {}
+        } catch { }
 
         // Double check still latest before updating state
         if (!isLatest) return;
@@ -723,12 +723,12 @@ export default function PosPage() {
   function openProductModal(lineToEdit?: Line) {
     setShowProductModal(true);
     setModalSearchQuery("");
-    
+
     if (lineToEdit && lineToEdit.product_id) {
       // EDIT mode: prefill one draft from existing line
       const product = productById.get(lineToEdit.product_id);
       setEditLineId(lineToEdit.id);
-      
+
       const draft: DraftLine = {
         id: crypto.randomUUID(),
         product_id: lineToEdit.product_id,
@@ -738,7 +738,7 @@ export default function PosPage() {
         note: lineToEdit.note || "",
       };
       setDraftLines([draft]);
-      
+
       // Ensure sugar options loaded for DRINK
       if (product?.category?.includes("DRINK")) {
         ensureSugarOptions(lineToEdit.product_id);
@@ -759,7 +759,7 @@ export default function PosPage() {
   function addProductToDraft(product: ProductRow) {
     const avail = getAvailableSizes(product);
     const defaultSize = avail[0] ?? "STD";
-    
+
     const newDraft: DraftLine = {
       id: crypto.randomUUID(),
       product_id: product.product_id,
@@ -768,9 +768,9 @@ export default function PosPage() {
       sugar_value_code: "",
       note: "",
     };
-    
+
     setDraftLines((prev) => [...prev, newDraft]);
-    
+
     // Fetch default sugar if DRINK
     if (product.category?.includes("DRINK")) {
       fetchSugarOptions(product.product_id).then((opts) => {
@@ -802,14 +802,14 @@ export default function PosPage() {
           prev.map((l) =>
             l.id === editLineId
               ? {
-                  ...l,
-                  product_id: draft.product_id,
-                  product_name_input: product?.name ?? "",
-                  size: draft.size,
-                  sugar_value_code: draft.sugar_value_code,
-                  qty: draft.qty,
-                  note: draft.note,
-                }
+                ...l,
+                product_id: draft.product_id,
+                product_name_input: product?.name ?? "",
+                size: draft.size,
+                sugar_value_code: draft.sugar_value_code,
+                qty: draft.qty,
+                note: draft.note,
+              }
               : l
           )
         );
@@ -828,12 +828,12 @@ export default function PosPage() {
           note: draft.note,
         };
       });
-      
+
       if (itemsToAdd.length > 0) {
         setLines((prev) => {
           const lastLine = prev[prev.length - 1];
           const hasEmptyTrailing = lastLine && !lastLine.product_id && !lastLine.product_name_input;
-          
+
           if (hasEmptyTrailing) {
             return [...prev.slice(0, -1), ...itemsToAdd, lastLine];
           } else {
@@ -842,7 +842,7 @@ export default function PosPage() {
         });
       }
     }
-    
+
     closeProductModal();
   }
 
@@ -960,12 +960,12 @@ export default function PosPage() {
     }
 
     const digits = phone.replace(/\D/g, "");
-    
+
     // BUSINESS RULE C & B: Use line_id for quote lookup, send display_size + price_key to server
     const payloadLines = [];
     for (const l of lines) {
       if (!l.product_id || !isPositiveInt(l.qty)) continue;
-      
+
       const p = productById.get(l.product_id);
       const ql = quoteLineMap.get(l.id); // CRITICAL: lookup by line_id for duplicate products
 
@@ -985,12 +985,12 @@ export default function PosPage() {
         note: l.note || "",
       });
     }
-    
+
     if (!payloadLines.length) {
       alert("Chưa có món để đặt đơn.");
       return;
     }
-    
+
     setCreatingOrder(true);
     setLastOrderCode(null); // Clear previous order code before new submission
     try {
@@ -1038,16 +1038,16 @@ export default function PosPage() {
           const p = productById.get(l.product_id);
           const name = p?.name ?? l.product_name_input ?? "";
           const ql = quoteLineMap.get(l.id);
-          
+
           // Size label
           const displaySize = ql?.display_price_key ?? l.size;
           const sizeLabels: Record<string, string> = { SIZE_PHE: "Phê", SIZE_LA: "La", STD: "" };
           const sizeLabel = sizeLabels[displaySize] || "";
-          
+
           // Sugar label
           const opts = sugarMap[l.product_id];
           const sugarLabel = opts?.find((o) => o.value_code === l.sugar_value_code)?.label ?? "";
-          
+
           const qtyStr = String(l.qty).padStart(2, "0");
           const namePadded = name.padEnd(28, " ");
           const details = [sizeLabel, sugarLabel].filter(Boolean).join(", ");
@@ -1055,12 +1055,12 @@ export default function PosPage() {
         }
 
         // Find promotion name
-        const promoDisplay = promotionCode 
-          ? promotions.find(pr => pr.code === promotionCode)?.name || promotionCode 
+        const promoDisplay = promotionCode
+          ? promotions.find(pr => pr.code === promotionCode)?.name || promotionCode
           : "";
 
         const separator = "─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─";
-        
+
         const telegramMessage = [
           `Loại giao hàng: ${platformName}`,
           promoDisplay ? `CTKM: ${promoDisplay}` : "",
@@ -1080,7 +1080,7 @@ export default function PosPage() {
         fetch("/api/telegram/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             message: telegramMessage,
             chat_id: "646594151",
             order_id: json.order?.id,
@@ -1328,11 +1328,11 @@ export default function PosPage() {
                           {hasPrice && ql?.unit_price_after != null
                             ? `${formatMoney(ql.unit_price_after)}đ`
                             : p
-                            ? (() => {
+                              ? (() => {
                                 const prices = [p.price_phe, p.price_la, p.price_std].filter((x) => x != null && x > 0);
                                 return prices.length > 0 ? `${formatMoney(Math.min(...(prices as number[])))}đ` : "—";
                               })()
-                            : "—"}
+                              : "—"}
                           {p?.product_code && (
                             <span style={{ marginLeft: 6, color: "var(--color-text-muted)", fontSize: 10 }}>({p.product_code})</span>
                           )}
@@ -1483,8 +1483,8 @@ export default function PosPage() {
           </div>
 
           <p style={{ marginTop: 10, opacity: 0.7 }}>
-            Nếu dropdown “Đường” hiện “(chưa config đường)” nghĩa là món đó chưa có mapping trong{" "}
-            <code>product_option_values</code> (group_code = sugar).
+            Nếu dropdown “Đường” hiện “(chưa config đường)” nghĩa là
+            <strong> món này chưa được cấu hình tùy chọn Đường trong hệ thống.</strong>
           </p>
         </div>
 
@@ -1547,18 +1547,18 @@ export default function PosPage() {
                     onMouseDown={async (e) => {
                       e.preventDefault();
                       console.debug('[POS] Address selected:', { place_id: it.place_id, display_name: it.display_name });
-                      
+
                       // Clear suggestions and suppress FIRST
                       setAddrSuggestions([]);
                       suppressAddrSearchRef.current = true;
-                      
+
                       // Fetch place details to enrich data
                       try {
                         if (it.place_id) {
                           const url = `/api/places/details?placeId=${encodeURIComponent(it.place_id)}` +
                             (addrSessionToken ? `&sessionToken=${encodeURIComponent(addrSessionToken)}` : "");
                           console.debug('[POS] Fetching place details:', { url, sessionToken: addrSessionToken });
-                          
+
                           const res = await fetch(url);
                           const { ok, json } = await safeReadJson(res);
                           if (ok && json) {
@@ -1584,7 +1584,7 @@ export default function PosPage() {
                         setSelectedAddr(it);
                         setAddrQuery(it.display_name || "");
                       }
-                      
+
                       // Reset session token after selection
                       console.debug('[POS] Resetting session token after selection');
                       setAddrSessionToken("");
@@ -1733,7 +1733,7 @@ export default function PosPage() {
                           setStoreDropdownOpen(true);
                         }
                       })
-                      .catch(() => {})
+                      .catch(() => { })
                       .finally(() => setStoreLoading(false));
                   } else if (q === "") {
                     // Show all stores when empty
@@ -1746,7 +1746,7 @@ export default function PosPage() {
                           setStoreDropdownOpen(true);
                         }
                       })
-                      .catch(() => {})
+                      .catch(() => { })
                       .finally(() => setStoreLoading(false));
                   }
                 }}
@@ -1764,7 +1764,7 @@ export default function PosPage() {
                           setStoreDropdownOpen(true);
                         }
                       })
-                      .catch(() => {});
+                      .catch(() => { });
                   }
                 }}
                 onBlur={() => {
@@ -1891,8 +1891,8 @@ export default function PosPage() {
               {quoting
                 ? "⏳ Đang quote..."
                 : quote?.meta?.free_upsize_applied
-                ? `✅ Free upsize áp dụng (DRINK qty: ${quote.meta.drink_qty ?? "?"})`
-                : `ℹ️ Free upsize chưa áp dụng (DRINK qty: ${quote?.meta?.drink_qty ?? "0"})`}
+                  ? `✅ Free upsize áp dụng (DRINK qty: ${quote.meta.drink_qty ?? "?"})`
+                  : `ℹ️ Free upsize chưa áp dụng (DRINK qty: ${quote?.meta?.drink_qty ?? "0"})`}
             </div>
           </div>
 
@@ -1973,7 +1973,7 @@ export default function PosPage() {
                 lineHeight: 1.35,
               }}
             >
-              ❗ Không thể đặt đơn: {quote?.error || (hasMissingPrice ? "Có món thiếu giá" : "Quote chưa sẵn sàng")}.
+              ❗ Không thể đặt đơn: {quote?.error || (hasMissingPrice ? "Có món thiếu giá" : "Vui lòng thêm món")}.
             </div>
           )}
 
@@ -2095,217 +2095,126 @@ export default function PosPage() {
       </div>
 
       {/* Product Picker Modal */}
-      {showProductModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0,0,0,0.8)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeProductModal();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") closeProductModal();
-          }}
-        >
+      {
+        showProductModal && (
           <div
             style={{
-              background: "var(--color-bg-primary)",
-              borderRadius: 8,
-              width: "100%",
-              maxWidth: 1200,
-              height: "80vh",
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.8)",
+              zIndex: 9999,
               display: "flex",
-              flexDirection: "column",
-              border: "1px solid var(--color-border-light)",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 24,
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeProductModal();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeProductModal();
             }}
           >
-            {/* Header - compact */}
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--color-bg-secondary)" }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Chọn món</h2>
-              <button
-                onClick={closeProductModal}
-                style={{
-                  padding: "8px 12px",
-                  border: "1px solid var(--color-border-light)",
-                  borderRadius: 4,
-                  background: "transparent",
-                  color: "var(--color-text-primary)",
-                  cursor: "pointer",
-                  fontSize: 18,
-                }}
-              >
-                ✕
-              </button>
-            </div>
+            <div
+              style={{
+                background: "var(--color-bg-primary)",
+                borderRadius: 8,
+                width: "100%",
+                maxWidth: 1200,
+                height: "80vh",
+                display: "flex",
+                flexDirection: "column",
+                border: "1px solid var(--color-border-light)",
+              }}
+            >
+              {/* Header - compact */}
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--color-bg-secondary)" }}>
+                <h2 style={{ margin: 0, fontSize: 18 }}>Chọn món</h2>
+                <button
+                  onClick={closeProductModal}
+                  style={{
+                    padding: "8px 12px",
+                    border: "1px solid var(--color-border-light)",
+                    borderRadius: 4,
+                    background: "transparent",
+                    color: "var(--color-text-primary)",
+                    cursor: "pointer",
+                    fontSize: 18,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
 
-            {/* Body */}
-            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-              {/* Left Panel */}
-              <div style={{ flex: 2, display: "flex", flexDirection: "column", borderRight: "1px solid var(--color-border-light)" }}>
-                {/* Search - sticky */}
-                <div style={{ padding: "12px 16px", position: "sticky", top: 0, zIndex: 20, background: "var(--color-bg-primary)" }}>
-                  <input
-                    type="text"
-                    placeholder="Tìm món..."
-                    value={modalSearchQuery}
-                    onChange={(e) => setModalSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && modalSearchQuery) {
+              {/* Body */}
+              <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+                {/* Left Panel */}
+                <div style={{ flex: 2, display: "flex", flexDirection: "column", borderRight: "1px solid var(--color-border-light)" }}>
+                  {/* Search - sticky */}
+                  <div style={{ padding: "12px 16px", position: "sticky", top: 0, zIndex: 20, background: "var(--color-bg-primary)" }}>
+                    <input
+                      type="text"
+                      placeholder="Tìm món..."
+                      value={modalSearchQuery}
+                      onChange={(e) => setModalSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && modalSearchQuery) {
+                          const normalized = normalizeVietnamese(modalSearchQuery);
+                          const filtered = products.filter((p) => {
+                            const normName = normalizeVietnamese(p.name);
+                            const normCode = normalizeVietnamese(p.product_code);
+                            return normName.includes(normalized) || normCode.includes(normalized);
+                          }).sort((a, b) => {
+                            const aNorm = normalizeVietnamese(a.name);
+                            const bNorm = normalizeVietnamese(b.name);
+                            const aStarts = aNorm.startsWith(normalized) ? 0 : 1;
+                            const bStarts = bNorm.startsWith(normalized) ? 0 : 1;
+                            return aStarts - bStarts;
+                          });
+                          if (filtered.length > 0) {
+                            addProductToDraft(filtered[0]);
+                          }
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: 12,
+                        border: "1px solid var(--color-border-light)",
+                        borderRadius: 4,
+                        background: "var(--color-bg-secondary)",
+                        color: "var(--color-text-primary)",
+                        fontSize: 14,
+                      }}
+                    />
+                  </div>
+
+                  {/* Product Grid by Category Sections */}
+                  <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+                    {(() => {
+                      // Apply search filter if present
+                      let baseFiltered = products;
+                      if (modalSearchQuery) {
                         const normalized = normalizeVietnamese(modalSearchQuery);
-                        const filtered = products.filter((p) => {
+                        baseFiltered = products.filter((p) => {
                           const normName = normalizeVietnamese(p.name);
                           const normCode = normalizeVietnamese(p.product_code);
                           return normName.includes(normalized) || normCode.includes(normalized);
-                        }).sort((a, b) => {
+                        });
+                        // Sort: startsWith first
+                        baseFiltered = baseFiltered.sort((a, b) => {
                           const aNorm = normalizeVietnamese(a.name);
                           const bNorm = normalizeVietnamese(b.name);
                           const aStarts = aNorm.startsWith(normalized) ? 0 : 1;
                           const bStarts = bNorm.startsWith(normalized) ? 0 : 1;
                           return aStarts - bStarts;
                         });
-                        if (filtered.length > 0) {
-                          addProductToDraft(filtered[0]);
-                        }
-                      }
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: 12,
-                      border: "1px solid var(--color-border-light)",
-                      borderRadius: 4,
-                      background: "var(--color-bg-secondary)",
-                      color: "var(--color-text-primary)",
-                      fontSize: 14,
-                    }}
-                  />
-                </div>
-
-                {/* Product Grid by Category Sections */}
-                <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-                  {(() => {
-                    // Apply search filter if present
-                    let baseFiltered = products;
-                    if (modalSearchQuery) {
-                      const normalized = normalizeVietnamese(modalSearchQuery);
-                      baseFiltered = products.filter((p) => {
-                        const normName = normalizeVietnamese(p.name);
-                        const normCode = normalizeVietnamese(p.product_code);
-                        return normName.includes(normalized) || normCode.includes(normalized);
-                      });
-                      // Sort: startsWith first
-                      baseFiltered = baseFiltered.sort((a, b) => {
-                        const aNorm = normalizeVietnamese(a.name);
-                        const bNorm = normalizeVietnamese(b.name);
-                        const aStarts = aNorm.startsWith(normalized) ? 0 : 1;
-                        const bStarts = bNorm.startsWith(normalized) ? 0 : 1;
-                        return aStarts - bStarts;
-                      });
-                      // For search, show all in one grid
-                      return (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
-                          {baseFiltered.slice(0, 50).map((product) => {
-                            const count = draftCountByProduct.get(product.product_id) || 0;
-                            const isSelected = count > 0;
-                            // Build price labels with size hints
-                            const priceLabels: string[] = [];
-                            if (product.price_phe != null) priceLabels.push(`Phê ${formatMoney(product.price_phe)}`);
-                            if (product.price_la != null) priceLabels.push(`La ${formatMoney(product.price_la)}`);
-                            if (product.price_std != null && !product.price_phe && !product.price_la) priceLabels.push(`${formatMoney(product.price_std)}`);
-                            const hasSizes = (product.price_phe != null ? 1 : 0) + (product.price_la != null ? 1 : 0) >= 2;
-                            
-                            return (
-                              <div
-                                key={product.product_id}
-                                onClick={() => addProductToDraft(product)}
-                                style={{
-                                  padding: 10,
-                                  border: isSelected ? "2px solid var(--color-interactive-primary)" : "1px solid var(--color-border-light)",
-                                  borderRadius: 6,
-                                  background: isSelected ? "var(--color-status-info-light)" : "var(--color-bg-secondary)",
-                                  cursor: "pointer",
-                                  transition: "all 0.15s ease",
-                                  position: "relative",
-                                }}
-                                onMouseEnter={(e) => {
-                                  if (!isSelected) e.currentTarget.style.background = "var(--color-bg-tertiary)";
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (!isSelected) e.currentTarget.style.background = "var(--color-bg-secondary)";
-                                }}
-                              >
-                                {/* Badge count */}
-                                {isSelected && (
-                                  <div
-                                    style={{
-                                      position: "absolute",
-                                      top: -6,
-                                      right: -6,
-                                      width: 20,
-                                      height: 20,
-                                      borderRadius: "50%",
-                                      background: "var(--color-interactive-primary)",
-                                      color: "var(--color-text-inverse)",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontSize: 11,
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    {count}
-                                  </div>
-                                )}
-                                <div style={{ fontWeight: 500, marginBottom: 2, fontSize: 13 }}>{product.name}</div>
-                                {/* Size hint chips */}
-                                {hasSizes && (
-                                  <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
-                                    {product.price_phe != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>Phê</span>}
-                                    {product.price_la != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>La</span>}
-                                  </div>
-                                )}
-                                <div style={{ fontSize: 11, color: isSelected ? "var(--color-interactive-primary)" : "var(--color-text-secondary)", fontWeight: 500 }}>
-                                  {priceLabels.length > 0 ? priceLabels.join(" / ") : "—"}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    }
-                    
-                    // Category sections
-                    return categoryList.map((cat) => {
-                      const catProducts = baseFiltered.filter((p) => p.category?.includes(cat));
-                      if (catProducts.length === 0) return null;
-                      
-                      return (
-                        <div key={cat} style={{ marginBottom: 24 }}>
-                          <h4 style={{ 
-                            margin: "0 0 12px 0", 
-                            padding: "8px 12px",
-                            background: "var(--color-bg-tertiary)", 
-                            borderRadius: 6,
-                            fontSize: 14,
-                            fontWeight: 600,
-                            color: "var(--color-text-secondary)",
-                            position: "sticky",
-                            top: 0,
-                            zIndex: 10,
-                          }}>
-                            {categoryLabel(cat)} ({catProducts.length})
-                          </h4>
+                        // For search, show all in one grid
+                        return (
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
-                            {catProducts.map((product) => {
+                            {baseFiltered.slice(0, 50).map((product) => {
                               const count = draftCountByProduct.get(product.product_id) || 0;
                               const isSelected = count > 0;
                               // Build price labels with size hints
@@ -2314,7 +2223,7 @@ export default function PosPage() {
                               if (product.price_la != null) priceLabels.push(`La ${formatMoney(product.price_la)}`);
                               if (product.price_std != null && !product.price_phe && !product.price_la) priceLabels.push(`${formatMoney(product.price_std)}`);
                               const hasSizes = (product.price_phe != null ? 1 : 0) + (product.price_la != null ? 1 : 0) >= 2;
-                              
+
                               return (
                                 <div
                                   key={product.product_id}
@@ -2358,7 +2267,7 @@ export default function PosPage() {
                                     </div>
                                   )}
                                   <div style={{ fontWeight: 500, marginBottom: 2, fontSize: 13 }}>{product.name}</div>
-                                  {/* Size hint chips - TASK E */}
+                                  {/* Size hint chips */}
                                   {hasSizes && (
                                     <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
                                       {product.price_phe != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>Phê</span>}
@@ -2372,211 +2281,304 @@ export default function PosPage() {
                               );
                             })}
                           </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
+                        );
+                      }
 
-              {/* Right Panel - Draft Line Editor */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--color-bg-secondary)" }}>
-                <div style={{ padding: 16, borderBottom: "1px solid var(--color-border-light)" }}>
-                  <h3 style={{ margin: 0, fontSize: 16 }}>Đã chọn ({draftLines.length})</h3>
-                </div>
-                <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-                  {draftLines.length === 0 ? (
-                    <div style={{ textAlign: "center", color: "var(--color-text-tertiary)", marginTop: 40 }}>Chưa chọn món nào</div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                      {[...draftLines].reverse().map((draft) => {
-                        const product = productById.get(draft.product_id);
-                        const availSizes = getAvailableSizes(product ?? null);
-                        const isDrink = product?.category?.includes("DRINK");
-                        const sugarOpts = isDrink ? sugarMap[draft.product_id] : undefined;
-                        
+                      // Category sections
+                      return categoryList.map((cat) => {
+                        const catProducts = baseFiltered.filter((p) => p.category?.includes(cat));
+                        if (catProducts.length === 0) return null;
+
                         return (
-                          <div
-                            key={draft.id}
-                            style={{
-                              padding: 12,
-                              border: "1px solid var(--color-border-light)",
+                          <div key={cat} style={{ marginBottom: 24 }}>
+                            <h4 style={{
+                              margin: "0 0 12px 0",
+                              padding: "8px 12px",
+                              background: "var(--color-bg-tertiary)",
                               borderRadius: 6,
-                              background: "var(--color-bg-primary)",
-                            }}
-                          >
-                            {/* Product Name + Qty Inline */}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                              <div>
-                                <div style={{ fontWeight: 500 }}>{product?.name}</div>
-                                <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
-                                  {(() => {
-                                    const prices = [product?.price_phe, product?.price_la, product?.price_std].filter((x) => x != null && x > 0);
-                                    return prices.length > 0 ? `${formatMoney(Math.min(...(prices as number[])))}đ` : "—";
-                                  })()}
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                <button
-                                  onClick={() => updateDraftLine(draft.id, { qty: Math.max(1, draft.qty - 1) })}
-                                  style={{
-                                    padding: "4px 10px",
-                                    border: "1px solid var(--color-border-light)",
-                                    borderRadius: 4,
-                                    background: "var(--color-bg-secondary)",
-                                    color: "var(--color-text-primary)",
-                                    cursor: "pointer",
-                                    fontSize: 14,
-                                  }}
-                                >
-                                  −
-                                </button>
-                                <span style={{ minWidth: 30, textAlign: "center", fontWeight: 600 }}>{draft.qty}</span>
-                                <button
-                                  onClick={() => updateDraftLine(draft.id, { qty: draft.qty + 1 })}
-                                  style={{
-                                    padding: "4px 10px",
-                                    border: "1px solid var(--color-border-light)",
-                                    borderRadius: 4,
-                                    background: "var(--color-bg-secondary)",
-                                    color: "var(--color-text-primary)",
-                                    cursor: "pointer",
-                                    fontSize: 14,
-                                  }}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </div>
-                            
-                            {/* Size - TASK D: always show when has sizes, fix disabled logic */}
-                            {availSizes.length >= 1 && (
-                              <div style={{ marginBottom: 12 }}>
-                                <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Size:</div>
-                                <ChipGroup
-                                  value={draft.size}
-                                  options={[
-                                    { value: "SIZE_PHE", label: "Phê", disabled: !availSizes.includes("SIZE_PHE") },
-                                    { value: "SIZE_LA", label: "La", disabled: !availSizes.includes("SIZE_LA") },
-                                    { value: "STD", label: "STD", disabled: !availSizes.includes("STD") },
-                                  ].filter(opt => availSizes.includes(opt.value as SizeKey))}
-                                  onChange={(size) => updateDraftLine(draft.id, { size: size as SizeKey })}
-                                />
-                              </div>
-                            )}
-                            
-                            {/* Sugar */}
-                            {isDrink && (
-                              <div style={{ marginBottom: 12 }}>
-                                <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Đường:</div>
-                                <div style={{ maxHeight: 120, overflowY: "auto" }}>
-                                  <ChipGroup
-                                    compact
-                                    value={draft.sugar_value_code}
-                                    options={
-                                      sugarOpts === undefined
-                                        ? [{ value: "", label: "(loading...)", disabled: true }]
-                                        : sugarOpts.length === 0
-                                        ? [{ value: "", label: "—", disabled: true }]
-                                        : sugarOpts.map((o) => ({
-                                            value: o.value_code,
-                                            label: o.label
-                                              .replace(/\s*đường\s*$/i, "")
-                                              .replace(/^Độ ngọt bình thường$/i, "Bình thường"),
-                                          }))
-                                    }
-                                    onChange={(sugarCode) => updateDraftLine(draft.id, { sugar_value_code: sugarCode })}
-                                    onInteract={async () => {
-                                      if (sugarOpts === undefined) {
-                                        await ensureSugarOptions(draft.product_id);
-                                      }
+                              fontSize: 14,
+                              fontWeight: 600,
+                              color: "var(--color-text-secondary)",
+                              position: "sticky",
+                              top: 0,
+                              zIndex: 10,
+                            }}>
+                              {categoryLabel(cat)} ({catProducts.length})
+                            </h4>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+                              {catProducts.map((product) => {
+                                const count = draftCountByProduct.get(product.product_id) || 0;
+                                const isSelected = count > 0;
+                                // Build price labels with size hints
+                                const priceLabels: string[] = [];
+                                if (product.price_phe != null) priceLabels.push(`Phê ${formatMoney(product.price_phe)}`);
+                                if (product.price_la != null) priceLabels.push(`La ${formatMoney(product.price_la)}`);
+                                if (product.price_std != null && !product.price_phe && !product.price_la) priceLabels.push(`${formatMoney(product.price_std)}`);
+                                const hasSizes = (product.price_phe != null ? 1 : 0) + (product.price_la != null ? 1 : 0) >= 2;
+
+                                return (
+                                  <div
+                                    key={product.product_id}
+                                    onClick={() => addProductToDraft(product)}
+                                    style={{
+                                      padding: 10,
+                                      border: isSelected ? "2px solid var(--color-interactive-primary)" : "1px solid var(--color-border-light)",
+                                      borderRadius: 6,
+                                      background: isSelected ? "var(--color-status-info-light)" : "var(--color-bg-secondary)",
+                                      cursor: "pointer",
+                                      transition: "all 0.15s ease",
+                                      position: "relative",
                                     }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Note */}
-                            <div style={{ marginBottom: 12 }}>
-                              <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Ghi chú:</div>
-                              <input
-                                type="text"
-                                placeholder="Thêm ghi chú..."
-                                value={draft.note}
-                                onChange={(e) => updateDraftLine(draft.id, { note: e.target.value })}
-                                style={{
-                                  width: "100%",
-                                  padding: 6,
-                                  border: "1px solid var(--color-border-light)",
-                                  borderRadius: 4,
-                                  background: "var(--color-bg-secondary)",
-                                  color: "var(--color-text-primary)",
-                                  fontSize: 13,
-                                }}
-                              />
+                                    onMouseEnter={(e) => {
+                                      if (!isSelected) e.currentTarget.style.background = "var(--color-bg-tertiary)";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (!isSelected) e.currentTarget.style.background = "var(--color-bg-secondary)";
+                                    }}
+                                  >
+                                    {/* Badge count */}
+                                    {isSelected && (
+                                      <div
+                                        style={{
+                                          position: "absolute",
+                                          top: -6,
+                                          right: -6,
+                                          width: 20,
+                                          height: 20,
+                                          borderRadius: "50%",
+                                          background: "var(--color-interactive-primary)",
+                                          color: "var(--color-text-inverse)",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          fontSize: 11,
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        {count}
+                                      </div>
+                                    )}
+                                    <div style={{ fontWeight: 500, marginBottom: 2, fontSize: 13 }}>{product.name}</div>
+                                    {/* Size hint chips - TASK E */}
+                                    {hasSizes && (
+                                      <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                                        {product.price_phe != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>Phê</span>}
+                                        {product.price_la != null && <span style={{ fontSize: 10, padding: "1px 4px", background: "var(--color-bg-tertiary)", borderRadius: 4 }}>La</span>}
+                                      </div>
+                                    )}
+                                    <div style={{ fontSize: 11, color: isSelected ? "var(--color-interactive-primary)" : "var(--color-text-secondary)", fontWeight: 500 }}>
+                                      {priceLabels.length > 0 ? priceLabels.join(" / ") : "—"}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-                            
-                            {/* Remove */}
-                            <button
-                              onClick={() => removeDraftLine(draft.id)}
-                              style={{
-                                width: "100%",
-                                padding: "6px 12px",
-                                border: "1px solid var(--color-border-light)",
-                                borderRadius: 4,
-                                background: "transparent",
-                                color: "var(--color-status-error)",
-                                cursor: "pointer",
-                                fontSize: 12,
-                              }}
-                            >
-                              Xóa
-                            </button>
                           </div>
                         );
-                      })}
-                    </div>
-                  )}
+                      });
+                    })()}
+                  </div>
+                </div>
+
+                {/* Right Panel - Draft Line Editor */}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--color-bg-secondary)" }}>
+                  <div style={{ padding: 16, borderBottom: "1px solid var(--color-border-light)" }}>
+                    <h3 style={{ margin: 0, fontSize: 16 }}>Đã chọn ({draftLines.length})</h3>
+                  </div>
+                  <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+                    {draftLines.length === 0 ? (
+                      <div style={{ textAlign: "center", color: "var(--color-text-tertiary)", marginTop: 40 }}>Chưa chọn món nào</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                        {[...draftLines].reverse().map((draft) => {
+                          const product = productById.get(draft.product_id);
+                          const availSizes = getAvailableSizes(product ?? null);
+                          const isDrink = product?.category?.includes("DRINK");
+                          const sugarOpts = isDrink ? sugarMap[draft.product_id] : undefined;
+
+                          return (
+                            <div
+                              key={draft.id}
+                              style={{
+                                padding: 12,
+                                border: "1px solid var(--color-border-light)",
+                                borderRadius: 6,
+                                background: "var(--color-bg-primary)",
+                              }}
+                            >
+                              {/* Product Name + Qty Inline */}
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                <div>
+                                  <div style={{ fontWeight: 500 }}>{product?.name}</div>
+                                  <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                                    {(() => {
+                                      const prices = [product?.price_phe, product?.price_la, product?.price_std].filter((x) => x != null && x > 0);
+                                      return prices.length > 0 ? `${formatMoney(Math.min(...(prices as number[])))}đ` : "—";
+                                    })()}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                  <button
+                                    onClick={() => updateDraftLine(draft.id, { qty: Math.max(1, draft.qty - 1) })}
+                                    style={{
+                                      padding: "4px 10px",
+                                      border: "1px solid var(--color-border-light)",
+                                      borderRadius: 4,
+                                      background: "var(--color-bg-secondary)",
+                                      color: "var(--color-text-primary)",
+                                      cursor: "pointer",
+                                      fontSize: 14,
+                                    }}
+                                  >
+                                    −
+                                  </button>
+                                  <span style={{ minWidth: 30, textAlign: "center", fontWeight: 600 }}>{draft.qty}</span>
+                                  <button
+                                    onClick={() => updateDraftLine(draft.id, { qty: draft.qty + 1 })}
+                                    style={{
+                                      padding: "4px 10px",
+                                      border: "1px solid var(--color-border-light)",
+                                      borderRadius: 4,
+                                      background: "var(--color-bg-secondary)",
+                                      color: "var(--color-text-primary)",
+                                      cursor: "pointer",
+                                      fontSize: 14,
+                                    }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Size - TASK D: always show when has sizes, fix disabled logic */}
+                              {availSizes.length >= 1 && (
+                                <div style={{ marginBottom: 12 }}>
+                                  <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Size:</div>
+                                  <ChipGroup
+                                    value={draft.size}
+                                    options={[
+                                      { value: "SIZE_PHE", label: "Phê", disabled: !availSizes.includes("SIZE_PHE") },
+                                      { value: "SIZE_LA", label: "La", disabled: !availSizes.includes("SIZE_LA") },
+                                      { value: "STD", label: "STD", disabled: !availSizes.includes("STD") },
+                                    ].filter(opt => availSizes.includes(opt.value as SizeKey))}
+                                    onChange={(size) => updateDraftLine(draft.id, { size: size as SizeKey })}
+                                  />
+                                </div>
+                              )}
+
+                              {/* Sugar */}
+                              {isDrink && (
+                                <div style={{ marginBottom: 12 }}>
+                                  <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Đường:</div>
+                                  <div style={{ maxHeight: 120, overflowY: "auto" }}>
+                                    <ChipGroup
+                                      compact
+                                      value={draft.sugar_value_code}
+                                      options={
+                                        sugarOpts === undefined
+                                          ? [{ value: "", label: "(loading...)", disabled: true }]
+                                          : sugarOpts.length === 0
+                                            ? [{ value: "", label: "—", disabled: true }]
+                                            : sugarOpts.map((o) => ({
+                                              value: o.value_code,
+                                              label: o.label
+                                                .replace(/\s*đường\s*$/i, "")
+                                                .replace(/^Độ ngọt bình thường$/i, "Bình thường"),
+                                            }))
+                                      }
+                                      onChange={(sugarCode) => updateDraftLine(draft.id, { sugar_value_code: sugarCode })}
+                                      onInteract={async () => {
+                                        if (sugarOpts === undefined) {
+                                          await ensureSugarOptions(draft.product_id);
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Note */}
+                              <div style={{ marginBottom: 12 }}>
+                                <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 4 }}>Ghi chú:</div>
+                                <input
+                                  type="text"
+                                  placeholder="Thêm ghi chú..."
+                                  value={draft.note}
+                                  onChange={(e) => updateDraftLine(draft.id, { note: e.target.value })}
+                                  style={{
+                                    width: "100%",
+                                    padding: 6,
+                                    border: "1px solid var(--color-border-light)",
+                                    borderRadius: 4,
+                                    background: "var(--color-bg-secondary)",
+                                    color: "var(--color-text-primary)",
+                                    fontSize: 13,
+                                  }}
+                                />
+                              </div>
+
+                              {/* Remove */}
+                              <button
+                                onClick={() => removeDraftLine(draft.id)}
+                                style={{
+                                  width: "100%",
+                                  padding: "6px 12px",
+                                  border: "1px solid var(--color-border-light)",
+                                  borderRadius: 4,
+                                  background: "transparent",
+                                  color: "var(--color-status-error)",
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                }}
+                              >
+                                Xóa
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div style={{ padding: 20, borderTop: "1px solid var(--color-border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--color-bg-secondary)" }}>
-              <button
-                onClick={closeProductModal}
-                style={{
-                  padding: "10px 20px",
-                  border: "1px solid var(--color-border-light)",
-                  borderRadius: 6,
-                  background: "transparent",
-                  color: "var(--color-text-primary)",
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-              >
-                Hủy
-              </button>
-              <button
-                onClick={addDraftLinesToOrder}
-                disabled={draftLines.length === 0}
-                style={{
-                  padding: "10px 24px",
-                  border: "none",
-                  borderRadius: 6,
-                  background: draftLines.length > 0 ? "var(--color-interactive-primary)" : "var(--color-border-light)",
-                  color: draftLines.length > 0 ? "var(--color-text-inverse)" : "var(--color-text-tertiary)",
-                  cursor: draftLines.length > 0 ? "pointer" : "not-allowed",
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
-              >
-                {editLineId ? "Lưu" : `Thêm vào đơn (${draftLines.length})`}
-              </button>
+              {/* Footer */}
+              <div style={{ padding: 20, borderTop: "1px solid var(--color-border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--color-bg-secondary)" }}>
+                <button
+                  onClick={closeProductModal}
+                  style={{
+                    padding: "10px 20px",
+                    border: "1px solid var(--color-border-light)",
+                    borderRadius: 6,
+                    background: "transparent",
+                    color: "var(--color-text-primary)",
+                    cursor: "pointer",
+                    fontSize: 14,
+                  }}
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={addDraftLinesToOrder}
+                  disabled={draftLines.length === 0}
+                  style={{
+                    padding: "10px 24px",
+                    border: "none",
+                    borderRadius: 6,
+                    background: draftLines.length > 0 ? "var(--color-interactive-primary)" : "var(--color-border-light)",
+                    color: draftLines.length > 0 ? "var(--color-text-inverse)" : "var(--color-text-tertiary)",
+                    cursor: draftLines.length > 0 ? "pointer" : "not-allowed",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  {editLineId ? "Lưu" : `Thêm vào đơn (${draftLines.length})`}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </main>
+        )
+      }
+    </main >
   );
 }

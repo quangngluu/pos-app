@@ -287,19 +287,21 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "province" | "updated">("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [page, setPage] = useState(1);
+  const [totalStores, setTotalStores] = useState(0);
+  const limit = 20;
 
   // Extract province/region from structured address or fallback to parsing address_full
   const extractProvince = (store: Store): string => {
     // Priority: use structured fields if available
-    if (store.addr_ward || store.addr_district || store.addr_city || store.addr_state) {
+    if (store.addr_city || store.addr_state || store.addr_district) {
       const parts = [
-        store.addr_ward,
         store.addr_district,
         store.addr_city || store.addr_state
       ].filter(Boolean);
       return parts.join(", ") || "-";
     }
-    
+
     // Fallback: parse from address_full
     if (!store.address_full) return "-";
     const parts = store.address_full.split(",").map(p => p.trim());
@@ -310,14 +312,15 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
     return parts[parts.length - 1] || "-";
   };
 
-  const fetchStores = async (q = "") => {
+  const fetchStores = async (q = "", p = 1) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/stores?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/admin/stores?q=${encodeURIComponent(q)}&page=${p}&limit=${limit}`);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       setStores(data.stores);
+      setTotalStores(data.total || 0);
     } catch (err: any) {
       setError(err.message || "Failed to fetch stores");
     } finally {
@@ -326,8 +329,8 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
   };
 
   useEffect(() => {
-    fetchStores(search);
-  }, [search]);
+    fetchStores(search, page);
+  }, [search, page]);
 
   const handleCreate = () => {
     setEditingStore(null);
@@ -375,7 +378,7 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
   // Sort stores
   const sortedStores = [...stores].sort((a, b) => {
     let compareResult = 0;
-    
+
     if (sortBy === "name") {
       compareResult = a.name.localeCompare(b.name);
     } else if (sortBy === "province") {
@@ -385,7 +388,7 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
     } else if (sortBy === "updated") {
       compareResult = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
     }
-    
+
     return sortOrder === "asc" ? compareResult : -compareResult;
   });
 
@@ -396,7 +399,10 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
           type="text"
           placeholder="Search stores..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           style={{
             flex: 1,
             padding: `${spacing['8']} ${spacing['12']}`,
@@ -432,21 +438,21 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${colors.border.light}`, background: colors.bg.tertiary }}>
-                <th 
+                <th
                   onClick={() => handleSort("name")}
                   style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
                   Name {sortBy === "name" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
                 <th style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, fontSize: typography.fontSize.sm }}>Address</th>
-                <th 
+                <th
                   onClick={() => handleSort("province")}
                   style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
                   Province/Region {sortBy === "province" && (sortOrder === "asc" ? "↑" : "↓")}
                 </th>
                 <th style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, fontSize: typography.fontSize.sm }}>Active</th>
-                <th 
+                <th
                   onClick={() => handleSort("updated")}
                   style={{ padding: spacing['12'], textAlign: "left", color: colors.text.secondary, fontWeight: typography.fontWeight.medium, cursor: "pointer", userSelect: "none", fontSize: typography.fontSize.sm }}
                 >
@@ -458,8 +464,14 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
             <tbody>
               {sortedStores.map((store) => {
                 // Display line1 if available, otherwise show truncated address_full
-                const displayAddress = store.addr_line1 || store.address_full || "-";
-                
+                let displayAddress = store.addr_line1 || store.address_full || "-";
+
+                // Fix duplicate address prefix (e.g. store is "Phê La", address is "Phê La, 29 Đại La")
+                if (displayAddress !== "-" && displayAddress.toLowerCase().startsWith(store.name.toLowerCase())) {
+                  displayAddress = displayAddress.substring(store.name.length).replace(/^[\s,-]+/, "");
+                  if (!displayAddress) displayAddress = store.address_full || "-";
+                }
+
                 return (
                   <tr key={store.id} style={{ borderBottom: `1px solid ${colors.border.light}` }}>
                     <td style={{ padding: spacing['12'], color: colors.text.primary }}>{store.name}</td>
@@ -509,6 +521,31 @@ function StoresTab({ setError }: { setError: (msg: string | null) => void }) {
         </div>
       )}
 
+      {/* Pagination Controls */}
+      {!loading && totalStores > limit && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
+          <div style={{ fontSize: typography.fontSize.sm, color: colors.text.secondary }}>
+            Showing {(page - 1) * limit + 1} to {Math.min(page * limit, totalStores)} of {totalStores} entries
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              disabled={page === 1}
+              onClick={() => setPage(p => p - 1)}
+              style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}`, opacity: page === 1 ? 0.5 : 1 }}
+            >
+              Previous
+            </button>
+            <button
+              disabled={page * limit >= totalStores}
+              onClick={() => setPage(p => p + 1)}
+              style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}`, opacity: page * limit >= totalStores ? 0.5 : 1 }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <StoreModal
           store={editingStore}
@@ -555,7 +592,7 @@ function StoreModal({
   const [addrError, setAddrError] = useState<string | null>(null);
   const [addrSessionToken] = useState(() => `store-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
-  
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -714,10 +751,10 @@ function StoreModal({
       alert("Name is required");
       return;
     }
-    
+
     // Sync addrQuery to addressFull before saving
     const finalAddress = addrQuery.trim() || null;
-    
+
     // Show warning if no coordinates (manual input)
     if (!lat || !lng) {
       const confirmed = confirm(
@@ -727,7 +764,7 @@ function StoreModal({
       );
       if (!confirmed) return;
     }
-    
+
     onSave({
       name: name.trim(),
       address_full: finalAddress,
@@ -1411,6 +1448,7 @@ function ProductsTab({ setError }: { setError: (msg: string | null) => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
@@ -1471,7 +1509,7 @@ function ProductsTab({ setError }: { setError: (msg: string | null) => void }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
         <input
           type="text"
           placeholder="Search products..."
@@ -1479,6 +1517,14 @@ function ProductsTab({ setError }: { setError: (msg: string | null) => void }) {
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...sharedStyles.input, flex: 1 }}
         />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, color: colors.text.secondary, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+          />
+          Show Inactive
+        </label>
         <button
           onClick={handleCreate}
           style={sharedStyles.primaryButton}
@@ -1507,43 +1553,45 @@ function ProductsTab({ setError }: { setError: (msg: string | null) => void }) {
               </tr>
             </thead>
             <tbody>
-              {products.map((product) => (
-                <tr key={product.id} style={sharedStyles.tableRow}>
-                  <td style={{ padding: 12, fontFamily: "monospace" }}>{product.code}</td>
-                  <td style={{ padding: 12 }}>{product.name}</td>
-                  <td style={{ padding: 12, color: colors.text.secondary, fontSize: 14 }}>{product.category || "-"}</td>
-                  <td style={{ padding: 12, textAlign: "right", fontFamily: "monospace" }}>
-                    {product.prices.STD?.toLocaleString() || "-"}
-                  </td>
-                  <td style={{ padding: 12, textAlign: "right", fontFamily: "monospace" }}>
-                    {product.prices.SIZE_PHE?.toLocaleString() || "-"}
-                  </td>
-                  <td style={{ padding: 12, textAlign: "right", fontFamily: "monospace" }}>
-                    {product.prices.SIZE_LA?.toLocaleString() || "-"}
-                  </td>
-                  <td style={{ padding: 12 }}>
-                    <span
-                      style={{
-                        padding: "4px 8px",
-                        borderRadius: 4,
-                        fontSize: 12,
-                        background: product.is_active ? colors.status.successLight : colors.bg.secondary,
-                        color: product.is_active ? colors.status.success : colors.text.secondary,
-                      }}
-                    >
-                      {product.is_active ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td style={{ padding: 12 }}>
-                    <button
-                      onClick={() => handleEdit(product)}
-                      style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}
-                    >
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {products
+                .filter(p => showInactive || p.is_active)
+                .map((product) => (
+                  <tr key={product.id} style={sharedStyles.tableRow}>
+                    <td style={{ padding: 12, fontFamily: "monospace" }}>{product.code}</td>
+                    <td style={{ padding: 12 }}>{product.name}</td>
+                    <td style={{ padding: 12, color: colors.text.secondary, fontSize: 14 }}>{product.category || "-"}</td>
+                    <td style={{ padding: 12, textAlign: "right", fontFamily: "monospace", color: product.prices.STD ? undefined : colors.text.secondary }}>
+                      {product.prices.STD ? `${product.prices.STD.toLocaleString()}đ` : "N/A"}
+                    </td>
+                    <td style={{ padding: 12, textAlign: "right", fontFamily: "monospace", color: product.prices.SIZE_PHE ? undefined : colors.text.secondary }}>
+                      {product.prices.SIZE_PHE ? `${product.prices.SIZE_PHE.toLocaleString()}đ` : "N/A"}
+                    </td>
+                    <td style={{ padding: 12, textAlign: "right", fontFamily: "monospace", color: product.prices.SIZE_LA ? undefined : colors.text.secondary }}>
+                      {product.prices.SIZE_LA ? `${product.prices.SIZE_LA.toLocaleString()}đ` : "N/A"}
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 4,
+                          fontSize: 12,
+                          background: product.is_active ? colors.status.successLight : colors.bg.secondary,
+                          color: product.is_active ? colors.status.success : colors.text.secondary,
+                        }}
+                      >
+                        {product.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      <button
+                        onClick={() => handleEdit(product)}
+                        style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -1855,17 +1903,17 @@ function ProductModal({
   const [name, setName] = useState(product?.name || "");
   const [category, setCategory] = useState(product?.category || "");
   const [isActive, setIsActive] = useState(product?.is_active ?? true);
-  
+
   // Price mode: "single" (STD only) or "multi" (PHE/LA/STD)
   const [priceMode, setPriceMode] = useState<"single" | "multi">("single");
   const [priceSTD, setPriceSTD] = useState(product?.prices.STD?.toString() || "");
   const [pricePHE, setPricePHE] = useState(product?.prices.SIZE_PHE?.toString() || "");
   const [priceLA, setPriceLA] = useState(product?.prices.SIZE_LA?.toString() || "");
-  
+
   // Categories dropdown
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
-  
+
   // Code generation
   const [codeManuallyEdited, setCodeManuallyEdited] = useState(!!product); // If editing, code was manually set
   const [codeEditing, setCodeEditing] = useState(false);
@@ -1934,7 +1982,7 @@ function ProductModal({
     }
 
     const prices: any = {};
-    
+
     if (priceMode === "single") {
       if (priceSTD.trim() && !isNaN(parseFloat(priceSTD))) {
         prices.STD = parseFloat(priceSTD);
@@ -1953,6 +2001,7 @@ function ProductModal({
           code: code.trim(),
           name: name.trim(),
           category: category.trim(),
+          category_code: category.trim(),
           is_active: isActive,
         },
         prices,
@@ -1964,6 +2013,7 @@ function ProductModal({
         code: code.trim(),
         name: name.trim(),
         category: category.trim(),
+        category_code: category.trim(),
         is_active: isActive,
         prices,
       });
@@ -2243,7 +2293,7 @@ function SubcategoriesTab({ setError }: { setError: (msg: string | null) => void
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (filterCategory) params.set("category_code", filterCategory);
-      
+
       const res = await fetch(`/api/admin/subcategories?${params.toString()}`);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
@@ -2298,7 +2348,7 @@ function SubcategoriesTab({ setError }: { setError: (msg: string | null) => void
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this subcategory?")) return;
-    
+
     setError(null);
     try {
       const res = await fetch(`/api/admin/subcategories?id=${id}`, { method: "DELETE" });
@@ -2381,8 +2431,8 @@ function SubcategoriesTab({ setError }: { setError: (msg: string | null) => void
                     </button>
                     <button
                       onClick={() => handleDelete(sub.id)}
-                      style={{ 
-                        ...sharedStyles.secondaryButton, 
+                      style={{
+                        ...sharedStyles.secondaryButton,
                         padding: `${spacing['8']} ${spacing['12']}`,
                         color: colors.status.error,
                         borderColor: colors.status.error,
@@ -2626,7 +2676,7 @@ function ProductMappingTab({ setError }: { setError: (msg: string | null) => voi
 
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this mapping?")) return;
-    
+
     setError(null);
     try {
       const res = await fetch(`/api/admin/product-mapping?id=${id}`, { method: "DELETE" });
@@ -2699,8 +2749,8 @@ function ProductMappingTab({ setError }: { setError: (msg: string | null) => voi
                     </button>
                     <button
                       onClick={() => handleDelete(m.id)}
-                      style={{ 
-                        ...sharedStyles.secondaryButton, 
+                      style={{
+                        ...sharedStyles.secondaryButton,
                         padding: `${spacing['8']} ${spacing['12']}`,
                         color: colors.status.error,
                         borderColor: colors.status.error,
