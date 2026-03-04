@@ -1,0 +1,155 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { colors, spacing } from "@/app/lib/designTokens";
+import { Category, Subcategory, sharedStyles } from "./shared";
+
+function SubcategoryModal({ subcategory, categories, onClose, onSave }: { subcategory: Subcategory | null; categories: Category[]; onClose: () => void; onSave: (payload: any) => void }) {
+    const [categoryCode, setCategoryCode] = useState(subcategory?.category_code || "");
+    const [name, setName] = useState(subcategory?.name || "");
+    const [sortOrder, setSortOrder] = useState(subcategory?.sort_order?.toString() || "0");
+    const [isActive, setIsActive] = useState(subcategory?.is_active ?? true);
+
+    const handleSubmit = () => {
+        if (!categoryCode) { alert("Category is required"); return; }
+        if (!name.trim()) { alert("Name is required"); return; }
+        onSave({ category_code: categoryCode, name: name.trim(), sort_order: parseInt(sortOrder) || 0, is_active: isActive });
+    };
+
+    return (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: spacing['24'] }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div style={{ ...sharedStyles.modalCard, width: "100%", maxWidth: 500 }}>
+                <h2 style={{ marginBottom: 24, fontSize: 20 }}>{subcategory ? "Edit Subcategory" : "Create Subcategory"}</h2>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={sharedStyles.label}>Category *</label>
+                    <select value={categoryCode} onChange={(e) => setCategoryCode(e.target.value)} style={sharedStyles.input} disabled={!!subcategory}>
+                        <option value="">Select category...</option>
+                        {categories.map((cat) => <option key={cat.code} value={cat.code}>{cat.name} ({cat.code})</option>)}
+                    </select>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={sharedStyles.label}>Name *</label>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Subcategory name" style={sharedStyles.input} />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={sharedStyles.label}>Sort Order</label>
+                    <input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} min="0" style={sharedStyles.input} />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                        <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: 16, height: 16 }} />
+                        <span style={{ fontSize: 14 }}>Active</span>
+                    </label>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={onClose} style={sharedStyles.secondaryButton}>Cancel</button>
+                    <button onClick={handleSubmit} style={sharedStyles.primaryButton}>Save</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function SubcategoriesTab({ setError }: { setError: (msg: string | null) => void }) {
+    const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [filterCategory, setFilterCategory] = useState("");
+    const [showModal, setShowModal] = useState(false);
+    const [editingSubcategory, setEditingSubcategory] = useState<Subcategory | null>(null);
+
+    const fetchCategories = async () => {
+        try { const res = await fetch("/api/admin/categories"); const data = await res.json(); if (data.ok) setCategories(data.categories || []); }
+        catch (err) { console.error("Failed to fetch categories:", err); }
+    };
+
+    const fetchSubcategories = async () => {
+        setLoading(true); setError(null);
+        try {
+            const params = new URLSearchParams();
+            if (search) params.set("q", search);
+            if (filterCategory) params.set("category_code", filterCategory);
+            const res = await fetch(`/api/admin/subcategories?${params.toString()}`);
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+            setSubcategories(data.subcategories || []);
+        } catch (err: any) { setError(err.message || "Failed to fetch subcategories"); }
+        finally { setLoading(false); }
+    };
+
+    useEffect(() => { fetchCategories(); }, []);
+    useEffect(() => { fetchSubcategories(); }, [search, filterCategory]);
+
+    const handleSave = async (payload: any) => {
+        setError(null);
+        try {
+            const isEdit = !!editingSubcategory;
+            const body = isEdit ? { id: editingSubcategory!.id, patch: payload } : payload;
+            const res = await fetch("/api/admin/subcategories", { method: isEdit ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+            setShowModal(false); fetchSubcategories();
+        } catch (err: any) { setError(err.message || "Failed to save subcategory"); }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this subcategory?")) return;
+        setError(null);
+        try {
+            const res = await fetch(`/api/admin/subcategories?id=${id}`, { method: "DELETE" });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+            fetchSubcategories();
+        } catch (err: any) { setError(err.message || "Failed to delete subcategory"); }
+    };
+
+    return (
+        <div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+                <input type="text" placeholder="Search subcategories..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...sharedStyles.input, flex: 1, minWidth: 200 }} />
+                <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} style={{ ...sharedStyles.input, width: 200 }}>
+                    <option value="">All Categories</option>
+                    {categories.map((cat) => <option key={cat.code} value={cat.code}>{cat.name}</option>)}
+                </select>
+                <button onClick={() => { setEditingSubcategory(null); setShowModal(true); }} style={sharedStyles.primaryButton}>+ Create Subcategory</button>
+            </div>
+
+            {loading ? (
+                <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>Loading...</div>
+            ) : subcategories.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>No subcategories found</div>
+            ) : (
+                <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr style={{ borderBottom: `1px solid ${colors.border.light}` }}>
+                            <th style={sharedStyles.tableHeader}>Category</th><th style={sharedStyles.tableHeader}>Name</th>
+                            <th style={sharedStyles.tableHeader}>Sort Order</th><th style={sharedStyles.tableHeader}>Active</th><th style={sharedStyles.tableHeader}>Actions</th>
+                        </tr></thead>
+                        <tbody>
+                            {subcategories.map((sub) => (
+                                <tr key={sub.id} style={sharedStyles.tableRow}>
+                                    <td style={{ padding: 12, fontFamily: "monospace" }}>{sub.categories?.name || sub.category_code}</td>
+                                    <td style={{ padding: 12 }}>{sub.name}</td>
+                                    <td style={{ padding: 12, color: colors.text.secondary }}>{sub.sort_order}</td>
+                                    <td style={{ padding: 12 }}><span style={{ padding: "4px 8px", borderRadius: 4, fontSize: 12, background: sub.is_active ? colors.status.successLight : colors.bg.secondary, color: sub.is_active ? colors.status.success : colors.text.secondary }}>{sub.is_active ? "Active" : "Inactive"}</span></td>
+                                    <td style={{ padding: 12, display: "flex", gap: 8 }}>
+                                        <button onClick={() => { setEditingSubcategory(sub); setShowModal(true); }} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}>Edit</button>
+                                        <button onClick={() => handleDelete(sub.id)} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}`, color: colors.status.error, borderColor: colors.status.error }}>Delete</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {showModal && <SubcategoryModal subcategory={editingSubcategory} categories={categories} onClose={() => setShowModal(false)} onSave={handleSave} />}
+        </div>
+    );
+}

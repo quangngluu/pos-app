@@ -5,8 +5,17 @@ import {
     VALID_TRANSITIONS,
 } from "@/app/lib/constants/orderStatus";
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8459588064:AAEeHFwkr0hnaM19rVZyy3isJgsBQgabJ78";
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
+function getTelegramBotToken(): string {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) {
+        throw new Error("TELEGRAM_BOT_TOKEN environment variable is not set");
+    }
+    return token;
+}
+
+function getTelegramChatId(): string {
+    return process.env.TELEGRAM_CHAT_ID || "";
+}
 
 // Build inline keyboard for status buttons
 export function buildStatusKeyboard(orderId: string, currentStatus: OrderStatus) {
@@ -44,7 +53,7 @@ export function buildStatusKeyboard(orderId: string, currentStatus: OrderStatus)
 export async function ensureWebhookSetup(baseUrl: string) {
     try {
         // Check current webhook
-        const infoRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo`);
+        const infoRes = await fetch(`https://api.telegram.org/bot${getTelegramBotToken()}/getWebhookInfo`);
         const info = await infoRes.json();
 
         const webhookUrl = `${baseUrl}/api/telegram/webhook`;
@@ -52,7 +61,7 @@ export async function ensureWebhookSetup(baseUrl: string) {
         // If webhook is not set or different, set it
         if (!info.result?.url || info.result.url !== webhookUrl) {
             console.log(`Setting Telegram webhook to: ${webhookUrl}`);
-            const setRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`, {
+            const setRes = await fetch(`https://api.telegram.org/bot${getTelegramBotToken()}/setWebhook`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ url: webhookUrl }),
@@ -73,7 +82,7 @@ export async function sendTelegramOrderMessage(params: {
     baseUrl?: string;
 }) {
     const { message, order_id, order_code, chat_id, baseUrl } = params;
-    const targetChatId = chat_id || TELEGRAM_CHAT_ID;
+    const targetChatId = chat_id || getTelegramChatId();
 
     if (!targetChatId) {
         return { ok: false, error: "Missing chat_id" };
@@ -84,7 +93,7 @@ export async function sendTelegramOrderMessage(params: {
         ensureWebhookSetup(baseUrl).catch(() => { });
     }
 
-    const telegramUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const telegramUrl = `https://api.telegram.org/bot${getTelegramBotToken()}/sendMessage`;
 
     const telegramBody: any = {
         chat_id: targetChatId,

@@ -1,0 +1,124 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { colors, spacing } from "@/app/lib/designTokens";
+import { Category, sharedStyles } from "./shared";
+
+function CategoryModal({ category, onClose, onSave }: { category: Category | null; onClose: () => void; onSave: (payload: any) => void }) {
+    const [code, setCode] = useState(category?.code || "");
+    const [name, setName] = useState(category?.name || "");
+    const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() || "0");
+    const [isActive, setIsActive] = useState(category?.is_active ?? true);
+
+    const handleSubmit = () => {
+        if (!code.trim()) { alert("Code is required"); return; }
+        if (!name.trim()) { alert("Name is required"); return; }
+        onSave({ code: code.trim().toUpperCase(), name: name.trim(), sort_order: parseInt(sortOrder) || 0, is_active: isActive });
+    };
+
+    return (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onClose}>
+            <div onClick={(e) => e.stopPropagation()} style={{ ...sharedStyles.modalCard, width: "90%", maxWidth: 500 }}>
+                <h2 style={{ marginTop: 0, marginBottom: 24 }}>{category ? "Edit Category" : "Create Category"}</h2>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={sharedStyles.label}>Code *</label>
+                    <input type="text" value={code} onChange={(e) => setCode(e.target.value)} disabled={!!category} placeholder="DRINK, CAKE, TOPPING..." style={{ ...(category ? sharedStyles.disabledInput : sharedStyles.input), textTransform: "uppercase" }} />
+                    {category && <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 4 }}>Code cannot be changed after creation</div>}
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={sharedStyles.label}>Name *</label>
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Đồ uống, Bánh..." style={sharedStyles.input} />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={sharedStyles.label}>Sort Order</label>
+                    <input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} min="0" style={sharedStyles.input} />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                        <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: 16, height: 16 }} />
+                        <span style={{ fontSize: 14 }}>Active</span>
+                    </label>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={onClose} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}>Cancel</button>
+                    <button onClick={handleSubmit} style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['14']}` }}>Save</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function CategoriesTab({ setError }: { setError: (msg: string | null) => void }) {
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [showModal, setShowModal] = useState(false);
+    const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+
+    const fetchCategories = async (q = "") => {
+        setLoading(true); setError(null);
+        try {
+            const res = await fetch(`/api/admin/categories?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+            setCategories(data.categories);
+        } catch (err: any) { setError(err.message || "Failed to fetch categories"); }
+        finally { setLoading(false); }
+    };
+
+    useEffect(() => { fetchCategories(search); }, [search]);
+
+    const handleSave = async (payload: any) => {
+        setError(null);
+        try {
+            const isEdit = !!editingCategory;
+            const body = isEdit ? { code: editingCategory!.code, patch: payload } : payload;
+            const res = await fetch("/api/admin/categories", { method: isEdit ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error);
+            setShowModal(false); fetchCategories(search);
+        } catch (err: any) { setError(err.message || "Failed to save category"); }
+    };
+
+    return (
+        <div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+                <input type="text" placeholder="Search categories..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...sharedStyles.input, flex: 1 }} />
+                <button onClick={() => { setEditingCategory(null); setShowModal(true); }} style={sharedStyles.primaryButton}>+ Create Category</button>
+            </div>
+
+            {loading ? (
+                <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>Loading...</div>
+            ) : categories.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: colors.text.secondary }}>No categories found</div>
+            ) : (
+                <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr style={{ borderBottom: `1px solid ${colors.border.light}` }}>
+                            <th style={sharedStyles.tableHeader}>Code</th><th style={sharedStyles.tableHeader}>Name</th>
+                            <th style={sharedStyles.tableHeader}>Sort Order</th><th style={sharedStyles.tableHeader}>Active</th><th style={sharedStyles.tableHeader}>Actions</th>
+                        </tr></thead>
+                        <tbody>
+                            {categories.map((cat) => (
+                                <tr key={cat.code} style={sharedStyles.tableRow}>
+                                    <td style={{ padding: 12, fontFamily: "monospace" }}>{cat.code}</td>
+                                    <td style={{ padding: 12 }}>{cat.name}</td>
+                                    <td style={{ padding: 12, color: colors.text.secondary }}>{cat.sort_order}</td>
+                                    <td style={{ padding: 12 }}><span style={{ padding: "4px 8px", borderRadius: 4, fontSize: 12, background: cat.is_active ? colors.status.successLight : colors.bg.secondary, color: cat.is_active ? colors.status.success : colors.text.secondary }}>{cat.is_active ? "Active" : "Inactive"}</span></td>
+                                    <td style={{ padding: 12 }}><button onClick={() => { setEditingCategory(cat); setShowModal(true); }} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}>Edit</button></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {showModal && <CategoryModal category={editingCategory} onClose={() => setShowModal(false)} onSave={handleSave} />}
+        </div>
+    );
+}

@@ -6,3 +6,6 @@ export { Chip } from './Chip';
 export { Select } from './Select';
 export { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from './Table';
 export { Modal } from './Modal';
+export { Navigation } from './Navigation';
+export { ChipGroup } from './ChipGroup';
+export type { ChipGroupOption, ChipGroupProps } from './ChipGroup';
