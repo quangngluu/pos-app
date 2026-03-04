@@ -2,15 +2,16 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!TELEGRAM_BOT_TOKEN) {
-  throw new Error("TELEGRAM_BOT_TOKEN environment variable is not set");
+function getBotToken(): string {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN environment variable is not set");
+  return token;
 }
 
 // GET: Check current webhook info
 export async function GET() {
   try {
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo`);
+    const res = await fetch(`https://api.telegram.org/bot${getBotToken()}/getWebhookInfo`);
     const data = await res.json();
 
     return NextResponse.json({
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
         const baseUrl = new URL(origin).origin;
         const fullUrl = `${baseUrl}/api/telegram/webhook`;
 
-        const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`, {
+        const res = await fetch(`https://api.telegram.org/bot${getBotToken()}/setWebhook`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: fullUrl }),
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
       ? webhook_url
       : `${webhook_url}/api/telegram/webhook`;
 
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`, {
+    const res = await fetch(`https://api.telegram.org/bot${getBotToken()}/setWebhook`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: fullUrl }),
@@ -81,7 +82,7 @@ export async function POST(req: Request) {
 // DELETE: Remove webhook (for testing with polling)
 export async function DELETE() {
   try {
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook`);
+    const res = await fetch(`https://api.telegram.org/bot${getBotToken()}/deleteWebhook`);
     const data = await res.json();
 
     return NextResponse.json({
