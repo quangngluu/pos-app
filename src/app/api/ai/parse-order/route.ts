@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { google } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { supabaseAdmin } from "@/app/lib/supabaseAdmin";
@@ -28,71 +28,112 @@ const ParsedOrderSchema = z.object({
 export type ParsedOrder = z.infer<typeof ParsedOrderSchema>;
 
 async function getMenuContext(): Promise<string> {
-    const { data: products, error } = await supabaseAdmin
-        .from("v_products_menu")
-        .select("product_id, product_code, name, category, price_phe, price_la, price_std, has_sugar_options")
-        .order("name");
+    const [productsResult, sugarResult] = await Promise.all([
+        supabaseAdmin
+            .from("v_products_menu")
+            .select("product_id, product_code, name, category, price_phe, price_la, price_std")
+            .order("name"),
+        supabaseAdmin
+            .from("v_product_sugar_options")
+            .select("product_id"),
+    ]);
 
-    if (error) throw error;
+    if (productsResult.error) throw productsResult.error;
 
-    const menu = (products || [])
+    const sugarSet = new Set<string>();
+    if (!sugarResult.error && sugarResult.data) {
+        sugarResult.data.forEach((r: any) => sugarSet.add(r.product_id));
+    }
+
+    const items = (productsResult.data || [])
         .filter((p: any) => p.price_phe != null || p.price_la != null || p.price_std != null)
         .map((p: any) => {
             const sizes: string[] = [];
-            if (p.price_phe != null) sizes.push("PHE");
-            if (p.price_la != null) sizes.push("LA");
+            if (p.price_phe != null) sizes.push("SIZE_PHE");
+            if (p.price_la != null) sizes.push("SIZE_LA");
             if (p.price_std != null) sizes.push("STD");
-
-            return `- ${p.name} (id=${p.product_id}, sizes=[${sizes.join(",")}]${p.has_sugar_options ? ", has_sugar" : ""})`;
+            const hasSugar = sugarSet.has(p.product_id);
+            const cat = p.category || "OTHER";
+            return { name: p.name, code: p.product_code, id: p.product_id, sizes, hasSugar, cat };
         });
 
-    return menu.join("\n");
+    // Group by category for clarity
+    const byCategory: Record<string, typeof items> = {};
+    for (const d of items) {
+        (byCategory[d.cat] ??= []).push(d);
+    }
+
+    const lines: string[] = [];
+    for (const [cat, prods] of Object.entries(byCategory)) {
+        lines.push(`\n### ${cat}`);
+        for (const p of prods) {
+            lines.push(`- "${p.name}" [code=${p.code}, id=${p.id}, sizes=${p.sizes.join("/")}${p.hasSugar ? ", sugar_options" : ""}]`);
+        }
+    }
+
+    return lines.join("\n");
 }
 
 function buildSystemPrompt(menuCatalog: string): string {
-    return `You are an expert order parser for a Vietnamese coffee shop POS system.
-Your job: extract structured order data from raw customer messages (usually from Zalo, Facebook, or phone calls).
+    return `You are an expert order parser for a Vietnamese coffee shop called "Phê La".
+Your ONLY job: extract structured order data from raw customer messages.
 
-## PRODUCT CATALOG (use these exact product IDs):
+## STRICT RULES:
+1. Each distinct product mention in the text = exactly ONE line in the output
+2. "2 olong sữa" = ONE line with qty=2 and product="Ô long sữa", NOT two separate lines
+3. "1 phê nâu, 2 bòng bưởi" = TWO lines (qty=1 phê nâu + qty=2 bòng bưởi)
+4. ONLY use product_id values from the catalog below. NEVER invent IDs.
+5. If a product cannot be matched, skip it and put it in raw_note
+6. DRINK items are the most common orders. MERCHANDISE/CAKE/TOPPING are less common.
+
+## PRODUCT CATALOG:
 ${menuCatalog}
 
-## SIZE MAPPING RULES:
-- "size L", "lớn", "size lớn" → SIZE_LA
-- "size S", "nhỏ", "size nhỏ", "phê", "size vừa" → SIZE_PHE  
-- "size M", "vừa" for drinks with only PHE/LA → SIZE_PHE
-- Default (no size mentioned): if product has PHE+LA sizes → SIZE_PHE, if only STD → STD
+## COMMON ALIASES (Vietnamese informal → exact product name):
+⚠️ CRITICAL: "phê xỉu" / "pxv" / "xỉu" = "Phê Xỉu Vani" (code DRK_PXV). This is NOT "Phê Nâu"!
+⚠️ CRITICAL: "phê nâu" / "nâu" / "pn" = "Phê Nâu" (code DRK_PN). This is NOT "Phê Xỉu"!
+- "olong sữa" / "ô long sữa" / "OLS" → "Ô long sữa" (code DRK_OLS)
+- "olong nhài" / "ô long nhài" → "Ô long Nhài sữa" (code DRK_OLNS)
+- "sc bòng bưởi" / "sữa chua bòng bưởi" → "Sữa Chua Bòng Bưởi" (code DRK_SCBB)
+- "bòng bưởi" / "bb" → "Bòng Bưởi" (code DRK_BB)
+- "matcha" → "Matcha Coco Latte" (code DRK_MCL)
+- "đà lạt" / "dl" → "Đà Lạt" (code DRK_DL)
+- "lụa đào" / "ld" → "Lụa Đào" (code DRK_LD)
+- "đen" / "đen đá" / "pd" → "Phê Đen" (code DRK_PD)
+- "tấm" → "Tấm" (code DRK_T)
+- "gấm" → "Gấm" (code DRK_G)
+- "phong lan" / "pl" → "Phong Lan" (code DRK_PL)
+- "shot" / "shot cf" → "Shot cà phê" (code DRK_SC)
 
-## SUGAR MAPPING RULES:
-- "không đường", "ko đường", "0 đường" → "0"
-- "ít ít đường", "30% đường" → "30"
-- "ít đường", "nửa đường", "50% đường" → "50"
-- "đường bình thường", "70% đường" → "70"
-- "nhiều đường", "ngọt", "100% đường", "full đường" → "100"
-- Not mentioned → "" (empty string = default)
+## TOPPINGS:
+- "+ trân châu" or "thêm trân châu" → add a SEPARATE topping line (e.g. "Trân châu Ô Long" TOP_TCOL) with qty matching the drink
+- "+ thạch" → add a SEPARATE topping line
+- Toppings are in the TOPPING category in the catalog
 
-## ICE/TEMPERATURE NOTES:
-- "đá", "iced" → normal (no note needed, it's default)
-- "không đá", "ko đá" → note: "không đá"
-- "ít đá" → note: "ít đá"  
-- "nóng", "hot" → note: "nóng"
+## SIZE MAPPING:
+- "size L" / "lớn" / "size lớn" → SIZE_LA
+- "size S" / "nhỏ" / "size nhỏ" / "phê" / "size vừa" → SIZE_PHE
+- No size mentioned → if product has SIZE_PHE → SIZE_PHE; if only STD → STD
 
-## QUANTITY RULES:
-- Default quantity is 1 if not specified
-- "2 cf sữa" → qty=2
-- "cf sữa x3" → qty=3
+## SUGAR MAPPING:
+- "không đường" / "ko đường" / "0 đường" → "0"
+- "ít ít đường" / "30%" → "30"
+- "ít đường" / "nửa đường" → "50"
+- "70%" / "đường vừa" → "70"
+- "nhiều đường" / "ngọt" / "full" → "100"
+- Not mentioned → "" (empty = default)
+
+## ICE NOTES:
+- "đá" = default (no note)
+- "không đá" / "ko đá" → note: "không đá"
+- "ít đá" → note: "ít đá"
+- "nóng" / "hot" → note: "nóng"
+- "đá chung" / "đá riêng" → note: "đá chung" / "đá riêng"
 
 ## CUSTOMER INFO:
-- Extract phone numbers (Vietnamese format: 09xx, 03xx, 07xx, 08xx, etc.)
-- Extract delivery address if mentioned
-- Extract general notes not related to specific items
-
-## IMPORTANT:
-- Match products by name similarity. Vietnamese coffee names have many informal variants:
-  - "cf" / "cà phê" / "cafe" = cà phê
-  - "bx" / "bạc xỉu" = bạc xỉu
-  - "trà đào" / "td" = trà đào
-- If you cannot match a product, use the closest match and put uncertainty in the note
-- Always return valid product_id from the catalog above`;
+- Phone: Vietnamese format (09xx, 03xx, 07xx, 08xx, 05xx)
+- Address: if mentioned
+- General notes: anything not item-specific`;
 }
 
 export async function POST(request: Request) {
@@ -115,9 +156,15 @@ export async function POST(request: Request) {
             return NextResponse.json({ ok: false, error: "No products found in menu" }, { status: 500 });
         }
 
+        // OpenRouter provider (OpenAI-compatible)
+        const openrouter = createOpenAI({
+            apiKey: process.env.OPENROUTER_API_KEY,
+            baseURL: "https://openrouter.ai/api/v1",
+        });
+
         // Call LLM with structured output
         const { object: parsed } = await generateObject({
-            model: google("gemini-2.0-flash"),
+            model: openrouter("google/gemini-2.0-flash-001"),
             schema: ParsedOrderSchema,
             system: buildSystemPrompt(menuCatalog),
             prompt: `Parse this customer order message:\n\n"${text.trim()}"`,
@@ -128,7 +175,7 @@ export async function POST(request: Request) {
             ok: true,
             parsed,
             _debug: {
-                model: "gemini-2.0-flash",
+                model: "google/gemini-2.0-flash-001 (via OpenRouter)",
                 input_length: text.length,
                 lines_count: parsed.lines.length,
             },

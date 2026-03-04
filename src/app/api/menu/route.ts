@@ -9,14 +9,24 @@ export const runtime = "nodejs";
  */
 export async function GET() {
     try {
-        const { data: products, error } = await supabaseAdmin
-            .from("v_products_menu")
-            .select("product_id, product_code, name, category, price_phe, price_la, price_std, has_sugar_options")
-            .order("name");
+        const [productsResult, sugarResult] = await Promise.all([
+            supabaseAdmin
+                .from("v_products_menu")
+                .select("product_id, product_code, name, category, price_phe, price_la, price_std")
+                .order("name"),
+            supabaseAdmin
+                .from("v_product_sugar_options")
+                .select("product_id"),
+        ]);
 
-        if (error) throw error;
+        if (productsResult.error) throw productsResult.error;
 
-        const menu = (products || [])
+        const sugarSet = new Set<string>();
+        if (!sugarResult.error && sugarResult.data) {
+            sugarResult.data.forEach((r: any) => sugarSet.add(r.product_id));
+        }
+
+        const menu = (productsResult.data || [])
             .filter((p: any) => p.price_phe != null || p.price_la != null || p.price_std != null)
             .map((p: any) => {
                 const sizes: string[] = [];
@@ -30,7 +40,7 @@ export async function GET() {
                     name: p.name,
                     category: p.category,
                     sizes,
-                    has_sugar: p.has_sugar_options ?? false,
+                    has_sugar: sugarSet.has(p.product_id),
                 };
             });
 
