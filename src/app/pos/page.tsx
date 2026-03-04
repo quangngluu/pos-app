@@ -7,6 +7,8 @@ import { Navigation, ChipGroup } from "@/app/components";
 import { supabase } from "@/app/lib/supabaseClient";
 import type { ProductRow, SizeKey, SugarOption, Line, DraftLine, QuoteLine, QuoteResult } from "./types";
 import { newLine, formatMoney, isPositiveInt, safeNumber, toNum, money, isSizedProduct, normalizeVietnamese, safeReadJson } from "./utils";
+import { SmartOrderModal } from "./components/SmartOrderModal";
+import type { ParsedOrder } from "@/app/api/ai/parse-order/route";
 
 
 export default function PosPage() {
@@ -78,6 +80,7 @@ export default function PosPage() {
 
   // Product Picker Modal state
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showSmartOrder, setShowSmartOrder] = useState(false);
   const [modalSearchQuery, setModalSearchQuery] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [editLineId, setEditLineId] = useState<string | null>(null);
@@ -940,6 +943,31 @@ export default function PosPage() {
     }
   }
 
+  // ── AI Smart Order: map parsed result into cart ──
+  function applyParsedOrder(parsed: ParsedOrder) {
+    const newLines: Line[] = parsed.lines.map((pl) => ({
+      id: crypto.randomUUID(),
+      product_id: pl.product_id,
+      product_name_input: pl.product_name,
+      size: pl.size,
+      sugar_value_code: pl.sugar_value_code || "",
+      qty: pl.qty,
+      note: pl.note || undefined,
+    }));
+
+    if (newLines.length > 0) {
+      setLines(newLines);
+    }
+
+    if (parsed.customer) {
+      if (parsed.customer.phone) setPhone(parsed.customer.phone.replace(/\D/g, ""));
+      if (parsed.customer.address) setAddrQuery(parsed.customer.address);
+      if (parsed.customer.note) setNote(parsed.customer.note);
+    }
+
+    setShowSmartOrder(false);
+  }
+
   const hasAnyDiscount = itemsDiscount > 0 && itemsSubtotalBefore > itemsPay;
 
   if (checkingAuth) return <main style={{ padding: 24 }}>Checking session...</main>;
@@ -958,7 +986,32 @@ export default function PosPage() {
             background: "var(--color-bg-secondary)",
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 16 }}>Khách hàng</div>
+          <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>Khách hàng</span>
+            <button
+              type="button"
+              onClick={() => setShowSmartOrder(true)}
+              style={{
+                padding: "6px 14px",
+                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all 0.2s ease",
+                boxShadow: "0 2px 8px rgba(99,102,241,0.3)",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(99,102,241,0.4)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(99,102,241,0.3)"; }}
+            >
+              🤖 AI Order
+            </button>
+          </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 16 }}>
             <div style={{ position: "relative" }}>
@@ -2403,6 +2456,12 @@ export default function PosPage() {
           )
         }
       </main>
+      {showSmartOrder && (
+        <SmartOrderModal
+          onClose={() => setShowSmartOrder(false)}
+          onApply={applyParsedOrder}
+        />
+      )}
     </div>
   );
 }

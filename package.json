@@ -10,8 +10,10 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.37",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.87.1",
+    "ai": "^6.0.111",
     "next": "16.0.10",
     "pg": "^8.18.0",
     "react": "19.2.1",
@@ -26,8 +28,8 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.10",
-    "vitest": "^1.6.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^1.6.1"
   }
 }
