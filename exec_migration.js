@@ -6,134 +6,178 @@ fs.readFileSync(".env.local", "utf8").split("\n").forEach(line => {
 const { createClient } = require("@supabase/supabase-js");
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-// New products from phela.vn not in DB
-const NEW_PRODUCTS = [
-  // SYPHON category
-  { code: "DRK_MN", name: "Mật Nhãn", category: "DRINK", sizes: { SIZE_PHE: 54000, SIZE_LA: 69000 }, sugar: true },
-  // PLUS category
-  { code: "DRK_PDPV", name: "Plus - Đỉnh Phù Vân", category: "DRINK", sizes: { STD: 137455 }, sugar: true },
-  { code: "DRK_PMN", name: "Plus - Mật Nhãn", category: "DRINK", sizes: { STD: 108000 }, sugar: true },
+// Prices from phela.vn website (March 2026)
+const WEBSITE_PRICES = {
+  // CÀ PHÊ (single size = SIZE_LA)
+  "DRK_PXV": { SIZE_LA: 50000 },    // Phê Xỉu Vani
+  "DRK_PECE": { SIZE_LA: 50000 },    // Phê Espresso (Colom, Ethi)
+  "DRK_PER": { SIZE_LA: 45000 },    // Phê Espresso (RO, Ara)
+  "DRK_PLCE": { SIZE_LA: 59000 },    // Phê Latte (Colom, Ethi)
+  "DRK_PLR": { SIZE_LA: 54000 },    // Phê Latte (RO, Ara)
+  "DRK_PCRA": { SIZE_LA: 54000 },    // Phê Cappu (RO, Ara)
+  "DRK_PCCE": { SIZE_LA: 59000 },    // Phê Cappu (Colom, Ethi)
+  "DRK_PAR": { SIZE_LA: 45000 },    // Phê Ame (RO, Ara)
+  "DRK_PACE": { SIZE_LA: 50000 },    // Phê Ame (Colom, Ethi)
+  "DRK_PN": { SIZE_LA: 39000 },    // Phê Nâu
+  "DRK_PD": { SIZE_LA: 39000 },    // Phê Đen
+  "DRK_DL": { SIZE_LA: 45000 },    // Đà Lạt
+
+  // SYPHON (Phê + La)
+  "DRK_PL": { SIZE_PHE: 54000, SIZE_LA: 69000 },  // Phong Lan
+  "DRK_OLS": { SIZE_PHE: 54000, SIZE_LA: 69000 },  // Ô Long Sữa Phê La → renamed
+  "DRK_OLNS": { SIZE_PHE: 54000, SIZE_LA: 69000 },  // Ô Long Nhài Sữa
+  "DRK_MN": { SIZE_PHE: 54000, SIZE_LA: 69000 },  // Mật Nhãn
+
+  // FRENCH PRESS
+  "DRK_LD": { SIZE_PHE: 54000, SIZE_LA: 69000 },  // Lụa Đào
+  "DRK_TVCP": { SIZE_PHE: 54000, SIZE_LA: 69000 },  // Trà Vỏ Cà Phê
+  "DRK_OLDH": { SIZE_LA: 69000 },                    // Ô Long Đào Hồng (La only)
+  "DRK_G": { SIZE_PHE: 54000, SIZE_LA: 69000 },   // Gấm
+
+  // MOKA POT
+  "DRK_T": { SIZE_PHE: 54000, SIZE_LA: 69000 },   // Tấm
+  "DRK_KB": { SIZE_PHE: 54000, SIZE_LA: 69000 },   // Khói B'Lao
+
+  // COLD BREW
+  "DRK_BB": { SIZE_LA: 64000 },                    // Bòng Bưởi
+  "DRK_LB": { SIZE_PHE: 54000, SIZE_LA: 69000 },   // Lang Biang
+  "DRK_SM": { SIZE_LA: 64000 },                    // Si Mơ
+
+  // Ô LONG MATCHA
+  "DRK_MPXPDX": { SIZE_LA: 64000 },                  // Matcha PXP (Phan Xi Păng)
+  "DRK_MCL": { SIZE_LA: 59000 },                    // Matcha Coco Latte
+
   // TOPPING
-  { code: "TOP_TCCK", name: "Trân Châu Chè Kho", category: "TOPPING", sizes: { STD: 10000 }, sugar: false },
-  // MERCHANDISE
-  { code: "ACC_BBTCGR", name: "Bọt biển - Trân Châu Gạo Rang", category: "MERCHANDISE", sizes: { STD: 25000 }, sugar: false },
-  { code: "MER_KLD", name: "Khăn Lụa Đào", category: "MERCHANDISE", sizes: { STD: 99000 }, sugar: false },
-  { code: "GIFT_HQPG", name: "Hộp Quà Phin Giấy", category: "MERCHANDISE", sizes: { STD: 590000 }, sugar: false },
-];
+  "TOP_TCGR": { STD: 10000 },  // Trân Châu Gạo Rang
+  "TOP_TCOL": { STD: 10000 },  // Trân Châu Ô Long
+  "TOP_TCPL": { STD: 10000 },  // Trân Châu Phong Lan
+  "TOP_TTDH": { STD: 15000 },  // Thạch Trà Đào Hồng
+  "TOP_TOLM": { STD: 15000 },  // Thạch Ô Long Matcha
+  "TOP_TTV": { STD: 15000 },  // Thạch Trà Vỏ
 
-// Products to deactivate (in DB but not on website anymore)
-const DEACTIVATE_CODES = [
-  "MER_CSD",    // Cam sấy dẻo
-  "MER_DTSD",   // Dâu tây sấy dẻo
-  "MER_MA",     // Mứt Atiso  
-  "MER_VBS",    // Vỏ bưởi sấy
-  "MER_XS",     // Xoài sấy
-  "MER_PPT200", // Phê Phin Truffle
-];
+  // PLUS
+  "DRK_PK": { STD: 108000 },   // Plus - Khói
+  "DRK_PMCL": { STD: 108000 },   // Plus - Matcha Coco Latte
+  "DRK_PLD": { STD: 108000 },   // Plus - Lụa Đào
+  "DRK_PPL": { STD: 108000 },   // Plus - Phong Lan
+  "DRK_PCB": { STD: 98182 },    // Plus - Cold Brew
+  "DRK_PDL": { STD: 137455 },   // Plus - Đà Lạt
+  "DRK_PDPV": { STD: 137455 },   // Plus - Đỉnh Phù Vân
+  "DRK_PT": { STD: 108000 },   // Plus - Tấm
+  "DRK_POLNS": { STD: 108000 },   // Plus - Ô Long Nhài Sữa
+  "DRK_POLSPL": { STD: 108000 },   // Plus - Ô Long Sữa Phê La
 
-// Products with legacy STD prices that now have SIZE_LA (need to clean up)
-const LEGACY_CLEANUP_CODES = [
-  "DRK_PXV", "DRK_PN", "DRK_PD", "DRK_DL",
-  "DRK_PACE", "DRK_PAR", "DRK_PCCE", "DRK_PCRA",
-  "DRK_PECE", "DRK_PER", "DRK_PLCE", "DRK_PLR",
-  "DRK_MPXPDX", "DRK_SC"
-];
+  // MANG VỀ NHÀ
+  "ACC_BBOLSPL": { STD: 25000 },  // Bọt biển - Ô Long Sữa Phê La
+  "ACC_BBPL": { STD: 25000 },  // Bọt biển - Phê Latte
+  "ACC_BBPN": { STD: 25000 },  // Bọt biển - Phê Nâu
+  "ACC_BBXV": { STD: 25000 },  // Bọt biển - Xe Van
+  "ACC_BBTCGR": { STD: 25000 },  // Bọt biển - Trân Châu Gạo Rang
+  "ACC_TTHCDD": { STD: 148000 }, // Túi Tote - Đai Trơn
+  "ACC_TTHCDK": { STD: 148000 }, // Túi Tote - Đai Khuông Nhạc
+  "ACC_PGPDS": { STD: 442000 }, // Phin Giấy - Phê Đặc Sản
+  "ACC_PGPNB": { STD: 197000 }, // Phin Giấy - Phê Nguyên Bản
+  "GIFT_HQTSTL6L": { STD: 177000 },// Hộp Quà Trà Sữa
+  "GIFT_HQDN": { STD: 737000 }, // Hộp Quà Đĩa Nhạc
+  "GIFT_HQPG": { STD: 590000 }, // Hộp Quà Phin Giấy
+  "MER_PPNB200": { STD: 108000 }, // Phê Phin Nguyên Bản - 200gr
+  "MER_PG150": { STD: 418000 }, // Phê Geisha - 150gr
+  "MER_PE150": { STD: 246000 }, // Phê Ethiopia - 150gr
+  "MER_PK150": { STD: 270000 }, // Phê Kenya - 150gr
+  "MER_PC150": { STD: 295000 }, // Phê Colombia - 150gr
+  "MER_OLMXDS150": { STD: 344000 },// Ô Long Mùa Xuân - 150gr
+  "ACC_PGOLNS": { STD: 374000 }, // Phin Giấy - OL Nhài Sữa
+  "ACC_PGOLSPL": { STD: 374000 }, // Phin Giấy - OL Sữa Phê La
+  "MER_KLD": { STD: 99000 },  // Khăn Lụa Đào
+};
+
+// Name corrections to match website
+const NAME_FIXES = {
+  "DRK_OLS": "Ô Long Sữa Phê La",   // was "Ô long sữa"
+  "DRK_OLNS": "Ô Long Nhài Sữa",     // was "Ô long Nhài sữa" 
+  "DRK_OLDH": "Ô Long Đào Hồng",     // was "Ô Long Đào Hồng" (ok)
+  "DRK_BB": "Bòng Bưởi",            // ok
+  "DRK_G": "Gấm",                  // ok
+  "DRK_MPXPDX": "Matcha Phan Xi Păng", // was "Matcha PXP (đá xay)"
+  "DRK_SCBB": "Sữa Chua Bòng Bưởi",  // ok
+  "DRK_SM": "Si Mơ",                // ok
+};
 
 async function run() {
-  console.log("=== Scope B: Add/Remove Products + Cleanup ===\n");
+  console.log("=== Scope C: Price + Name Sync ===\n");
 
-  // 1. Add new products
-  console.log("--- Adding new products ---");
-  for (const p of NEW_PRODUCTS) {
-    // Check if already exists
-    const { data: existing } = await supabase.from("products").select("id").eq("code", p.code).single();
-    if (existing) {
-      console.log(`  ⏭️  ${p.code} already exists`);
-      continue;
-    }
+  // Fetch all products with variants
+  const { data: products } = await supabase.from("products").select("id, code, name").eq("is_active", true);
+  const productMap = {};
+  products.forEach(p => productMap[p.code] = p);
 
-    // Create product
-    const { data: product, error: pErr } = await supabase
-      .from("products")
-      .insert({ code: p.code, name: p.name, category: p.category, category_code: p.category, is_active: true })
-      .select().single();
+  // Fetch all variant prices
+  const productIds = products.map(p => p.id);
+  const { data: variants } = await supabase
+    .from("product_variants")
+    .select("id, product_id, size_key, product_variant_prices(price_vat_incl)")
+    .in("product_id", productIds)
+    .eq("is_active", true);
 
-    if (pErr) { console.log(`  ❌ ${p.code}: ${pErr.message}`); continue; }
+  // Build current price map: { productCode: { sizeKey: { variantId, price } } }
+  const currentPrices = {};
+  variants?.forEach(v => {
+    const product = products.find(p => p.id === v.product_id);
+    if (!product) return;
+    if (!currentPrices[product.code]) currentPrices[product.code] = {};
+    const priceRec = Array.isArray(v.product_variant_prices) ? v.product_variant_prices[0] : v.product_variant_prices;
+    currentPrices[product.code][v.size_key] = {
+      variantId: v.id,
+      price: priceRec?.price_vat_incl ? Number(priceRec.price_vat_incl) : null
+    };
+  });
 
-    // Create variants + prices
-    for (const [sizeKey, price] of Object.entries(p.sizes)) {
-      const skuCode = `${p.code}_${sizeKey}`;
-      const { data: variant, error: vErr } = await supabase
-        .from("product_variants")
-        .insert({ product_id: product.id, size_key: sizeKey, sku_code: skuCode, is_active: true, sort_order: 0 })
-        .select().single();
+  // Compare and update prices
+  console.log("--- Price updates ---");
+  let priceChanges = 0;
+  for (const [code, targetPrices] of Object.entries(WEBSITE_PRICES)) {
+    const product = productMap[code];
+    if (!product) { continue; }
 
-      if (vErr) { console.log(`  ❌ ${p.code} variant ${sizeKey}: ${vErr.message}`); continue; }
-
-      await supabase.from("product_variant_prices").insert({ variant_id: variant.id, price_vat_incl: price });
-    }
-
-    // Add sugar options if needed
-    if (p.sugar) {
-      const { data: sugarOpts } = await supabase.from("option_values").select("code").eq("group_code", "sugar");
-      if (sugarOpts && sugarOpts.length > 0) {
-        const rows = sugarOpts.map(opt => ({
-          product_id: product.id, group_code: "sugar", value_code: opt.code,
-          is_enabled: true, is_default: opt.code === "SUGAR_100", sort_order: 0
-        }));
-        await supabase.from("product_option_values").upsert(rows, { onConflict: "product_id,group_code,value_code" });
+    for (const [sizeKey, targetPrice] of Object.entries(targetPrices)) {
+      const current = currentPrices[code]?.[sizeKey];
+      if (!current) {
+        console.log(`  ⚠️  ${code} ${sizeKey}: no variant (need to create)`);
+        continue;
       }
-    }
-
-    console.log(`  ✅ ${p.code} "${p.name}" — ${Object.entries(p.sizes).map(([k, v]) => `${k}=${v}`).join(", ")}${p.sugar ? " +sugar" : ""}`);
-  }
-
-  // 2. Deactivate old products
-  console.log("\n--- Deactivating old products ---");
-  for (const code of DEACTIVATE_CODES) {
-    const { error } = await supabase.from("products").update({ is_active: false }).eq("code", code);
-    console.log(error ? `  ❌ ${code}: ${error.message}` : `  ✅ ${code} → inactive`);
-  }
-
-  // 3. Clean up legacy STD prices for products that now use SIZE_LA
-  console.log("\n--- Cleaning legacy STD prices ---");
-  const { data: legacyProducts } = await supabase
-    .from("products").select("id, code").in("code", LEGACY_CLEANUP_CODES);
-
-  if (legacyProducts) {
-    for (const p of legacyProducts) {
-      // Check if this product has both a SIZE_LA variant AND a legacy STD in product_prices
-      const { data: variants } = await supabase
-        .from("product_variants").select("size_key").eq("product_id", p.id);
-      const hasLA = variants?.some(v => v.size_key === "SIZE_LA");
-
-      if (hasLA) {
-        // Delete legacy STD from product_prices (old table)
-        const { error, count } = await supabase
-          .from("product_prices").delete().eq("product_id", p.id).eq("price_key", "STD");
-
-        // Also delete STD variant if exists (shouldn't, but cleanup)
-        const stdVariant = variants?.find(v => v.size_key === "STD");
-        if (stdVariant) {
-          // Don't delete the STD variant if it's the only one — but these products now have SIZE_LA
-          // Actually we should keep it clean: these products migrated from STD to SIZE_LA
+      if (current.price !== targetPrice) {
+        const { error } = await supabase
+          .from("product_variant_prices")
+          .update({ price_vat_incl: targetPrice })
+          .eq("variant_id", current.variantId);
+        if (error) {
+          console.log(`  ❌ ${code} ${sizeKey}: ${error.message}`);
+        } else {
+          console.log(`  ✅ ${code} ${sizeKey}: ${current.price} → ${targetPrice}`);
+          priceChanges++;
         }
-
-        if (!error) console.log(`  ✅ ${p.code}: cleaned legacy STD`);
-        else console.log(`  ❌ ${p.code}: ${error.message}`);
       }
     }
   }
+  console.log(`\nPrice changes: ${priceChanges}`);
 
-  // 4. Verify
-  console.log("\n--- Verification ---");
-  const { data: allActive } = await supabase
-    .from("products").select("code, name, category").eq("is_active", true).order("code");
-  console.log(`Total active products: ${allActive?.length}`);
+  // Update names
+  console.log("\n--- Name updates ---");
+  let nameChanges = 0;
+  for (const [code, newName] of Object.entries(NAME_FIXES)) {
+    const product = productMap[code];
+    if (!product) continue;
+    if (product.name === newName) continue;
 
-  const cats = {};
-  allActive?.forEach(p => { cats[p.category || "?"] = (cats[p.category || "?"] || 0) + 1; });
-  Object.entries(cats).sort().forEach(([cat, count]) => console.log(`  ${cat}: ${count}`));
+    const { error } = await supabase.from("products").update({ name: newName }).eq("id", product.id);
+    if (error) {
+      console.log(`  ❌ ${code}: ${error.message}`);
+    } else {
+      console.log(`  ✅ ${code}: "${product.name}" → "${newName}"`);
+      nameChanges++;
+    }
+  }
+  console.log(`\nName changes: ${nameChanges}`);
 
   console.log("\nDone!");
 }
