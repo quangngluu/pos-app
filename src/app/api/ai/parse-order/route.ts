@@ -92,11 +92,13 @@ ${menuCatalog}
 ## COMMON ALIASES (Vietnamese informal → exact product name):
 ⚠️ CRITICAL: "phê xỉu" / "pxv" / "xỉu" = "Phê Xỉu Vani" (code DRK_PXV). This is NOT "Phê Nâu"!
 ⚠️ CRITICAL: "phê nâu" / "nâu" / "pn" = "Phê Nâu" (code DRK_PN). This is NOT "Phê Xỉu"!
-- "olong sữa" / "ô long sữa" / "OLS" → "Ô long sữa" (code DRK_OLS)
-- "olong nhài" / "ô long nhài" → "Ô long Nhài sữa" (code DRK_OLNS)
+- "olong sữa" / "ô long sữa" / "OLS" → "Ô Long Sữa Phê La" (code DRK_OLS)
+- "olong nhài" / "ô long nhài" → "Ô Long Nhài Sữa" (code DRK_OLNS)
+- "mật nhãn" / "mn" → "Mật Nhãn" (code DRK_MN)
 - "sc bòng bưởi" / "sữa chua bòng bưởi" → "Sữa Chua Bòng Bưởi" (code DRK_SCBB)
 - "bòng bưởi" / "bb" → "Bòng Bưởi" (code DRK_BB)
-- "matcha" → "Matcha Coco Latte" (code DRK_MCL)
+- "matcha" / "matcha pxp" → "Matcha Phan Xi Păng" (code DRK_MPXPDX)
+- "matcha coco" / "mcl" → "Matcha Coco Latte" (code DRK_MCL)
 - "đà lạt" / "dl" → "Đà Lạt" (code DRK_DL)
 - "lụa đào" / "ld" → "Lụa Đào" (code DRK_LD)
 - "đen" / "đen đá" / "pd" → "Phê Đen" (code DRK_PD)
