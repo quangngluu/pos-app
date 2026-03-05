@@ -15,7 +15,17 @@ const createPromotionSchema = z.object({
   end_at: z.string().optional(),
   percent_off: z.number().min(0).max(100).optional(),
   min_qty: z.number().int().min(0).optional(),
-  scopes: z.array(z.string()).optional(), // Category scopes for DISCOUNT
+  scopes: z.array(z.string()).optional(), // Legacy Category scopes
+  scope_targets: z.array(z.object({
+    target_type: z.enum(["CATEGORY", "SUBCATEGORY", "PRODUCT", "VARIANT"]),
+    target_id: z.string().min(1),
+    is_included: z.boolean().optional().default(true),
+  })).optional(),
+  rules: z.array(z.object({
+    rule_order: z.number().int().optional().default(0),
+    conditions: z.any().nullable().optional(),
+    actions: z.array(z.any()),
+  })).optional(),
 });
 
 const patchPromotionSchema = z.object({
@@ -31,7 +41,17 @@ const patchPromotionSchema = z.object({
     percent_off: z.number().min(0).max(100).nullable().optional(),
     min_qty: z.number().int().min(0).nullable().optional(),
   }),
-  scopes: z.array(z.string()).optional(), // Category scopes for DISCOUNT
+  scopes: z.array(z.string()).optional(), // Legacy Category scopes
+  scope_targets: z.array(z.object({
+    target_type: z.enum(["CATEGORY", "SUBCATEGORY", "PRODUCT", "VARIANT"]),
+    target_id: z.string().min(1),
+    is_included: z.boolean().optional().default(true),
+  })).optional(),
+  rules: z.array(z.object({
+    rule_order: z.number().int().optional().default(0),
+    conditions: z.any().nullable().optional(),
+    actions: z.array(z.any()),
+  })).optional(),
 });
 
 // GET /api/admin/promotions?q=
@@ -104,7 +124,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = createPromotionSchema.parse(body);
 
-    const { scopes, ...promotionData } = validated;
+    const { scopes, scope_targets, rules, ...promotionData } = validated;
 
     const { data, error } = await supabaseAdmin
       .from("promotions")
@@ -114,7 +134,7 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    // Insert scopes if provided and promo_type is DISCOUNT
+    // Insert legacy scopes if provided and promo_type is DISCOUNT
     if (scopes && scopes.length > 0 && data.promo_type === "DISCOUNT") {
       const scopeRows = scopes.map(category => ({
         promotion_code: data.code,
@@ -128,14 +148,40 @@ export async function POST(request: NextRequest) {
         .insert(scopeRows);
 
       if (scopeError) {
-        console.error("Failed to insert scopes:", scopeError);
+        console.error("Failed to insert legacy scopes:", scopeError);
       }
+    }
+
+    // Insert Flexible Scope Targets
+    if (validated.scope_targets && validated.scope_targets.length > 0) {
+      const targetRows = validated.scope_targets.map(t => ({
+        promotion_code: data.code,
+        ...t
+      }));
+      const { error: targetErr } = await supabaseAdmin
+        .from("promotion_scope_targets")
+        .insert(targetRows);
+      if (targetErr) console.error("Failed to insert scope targets:", targetErr);
+    }
+
+    // Insert Flexible Promotion Rules
+    if (validated.rules && validated.rules.length > 0) {
+      const ruleRows = validated.rules.map(r => ({
+        promotion_code: data.code,
+        rule_order: r.rule_order,
+        conditions: r.conditions,
+        actions: r.actions,
+      }));
+      const { error: ruleErr } = await supabaseAdmin
+        .from("promotion_rules")
+        .insert(ruleRows);
+      if (ruleErr) console.error("Failed to insert promotion rules:", ruleErr);
     }
 
     return NextResponse.json({ ok: true, promotion: { ...data, scopes: scopes || [] } });
   } catch (error: any) {
     console.error("POST /api/admin/promotions error:", error);
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { ok: false, error: "Validation failed", details: error.issues },
@@ -168,7 +214,7 @@ export async function PATCH(request: NextRequest) {
 
     if (error) throw error;
 
-    // Handle scopes update if provided
+    // Handle scopes update if provided (legacy)
     if (validated.scopes !== undefined) {
       // Delete existing scopes
       await supabaseAdmin
@@ -190,16 +236,54 @@ export async function PATCH(request: NextRequest) {
           .from("promotion_scopes")
           .insert(scopeRows);
 
-        if (scopeError) {
-          console.error("Failed to insert scopes:", scopeError);
-        }
+        if (scopeError) console.error("Failed to insert scopes:", scopeError);
+      }
+    }
+
+    // Handle Flexible Scope Targets (replace all)
+    if (validated.scope_targets !== undefined) {
+      await supabaseAdmin
+        .from("promotion_scope_targets")
+        .delete()
+        .eq("promotion_code", validated.code);
+
+      if (validated.scope_targets.length > 0) {
+        const targetRows = validated.scope_targets.map(t => ({
+          promotion_code: data.code,
+          ...t
+        }));
+        const { error: targetErr } = await supabaseAdmin
+          .from("promotion_scope_targets")
+          .insert(targetRows);
+        if (targetErr) console.error("Failed to update scope targets:", targetErr);
+      }
+    }
+
+    // Handle Flexible Rules (replace all)
+    if (validated.rules !== undefined) {
+      await supabaseAdmin
+        .from("promotion_rules")
+        .delete()
+        .eq("promotion_code", validated.code);
+
+      if (validated.rules.length > 0) {
+        const ruleRows = validated.rules.map(r => ({
+          promotion_code: data.code,
+          rule_order: r.rule_order,
+          conditions: r.conditions,
+          actions: r.actions,
+        }));
+        const { error: ruleErr } = await supabaseAdmin
+          .from("promotion_rules")
+          .insert(ruleRows);
+        if (ruleErr) console.error("Failed to update rules:", ruleErr);
       }
     }
 
     return NextResponse.json({ ok: true, promotion: { ...data, scopes: validated.scopes || [] } });
   } catch (error: any) {
     console.error("PATCH /api/admin/promotions error:", error);
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { ok: false, error: "Validation failed", details: error.issues },

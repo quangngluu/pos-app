@@ -18,6 +18,9 @@ const createProductSchema = z.object({
   subcategory_id: z.string().uuid().optional().nullable(),
   menu_section: z.string().optional().nullable(),
   is_active: z.boolean().optional().default(true),
+  has_sugar_options: z.boolean().optional().default(false),
+  sugar_options: z.array(z.string()).optional(),
+  sugar_default: z.string().optional(),
   prices: pricesSchema.optional(),
 });
 
@@ -31,9 +34,12 @@ const patchProductSchema = z.object({
     subcategory_id: z.string().uuid().optional().nullable(),
     menu_section: z.string().optional().nullable(),
     is_active: z.boolean().optional(),
+    has_sugar_options: z.boolean().optional(),
+    sugar_options: z.array(z.string()).optional(),
+    sugar_default: z.string().optional(),
   }),
   prices: pricesSchema.optional(),
-  priceMode: z.enum(["single", "multi"]).optional(), // Track pricing mode to clean up unused keys
+  priceMode: z.enum(["single", "multi"]).optional(),
 });
 
 type PriceKey = "STD" | "SIZE_PHE" | "SIZE_LA";
@@ -129,9 +135,20 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Fetch sugar options status
+    const { data: sugarData } = await supabaseAdmin
+      .from("product_option_values")
+      .select("product_id")
+      .eq("group_code", "sugar")
+      .in("product_id", productIds)
+      .eq("is_enabled", true);
+
+    const sugarSet = new Set((sugarData || []).map(r => r.product_id));
+
     // Compose response
     const result = products.map((product) => ({
       ...product,
+      has_sugar_options: sugarSet.has(product.id),
       prices: pricesMap.get(product.id) || {},
     }));
 
@@ -178,6 +195,34 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (productError) throw productError;
+
+    // Assign sugar options
+    const sugarCodes = validated.sugar_options || [];
+    if (sugarCodes.length > 0) {
+      const optionRows = sugarCodes.map(code => ({
+        product_id: product.id,
+        group_code: "sugar",
+        value_code: code,
+        is_enabled: true,
+        is_default: code === (validated.sugar_default || "SUGAR_100"),
+        sort_order: 0
+      }));
+      await supabaseAdmin.from("product_option_values").upsert(optionRows, { onConflict: "product_id,group_code,value_code" });
+    } else if (validated.has_sugar_options) {
+      // Fallback: old behavior - add all sugar options
+      const { data: sugarOptions } = await supabaseAdmin.from("option_values").select("code").eq("group_code", "sugar");
+      if (sugarOptions && sugarOptions.length > 0) {
+        const optionRows = sugarOptions.map(opt => ({
+          product_id: product.id,
+          group_code: "sugar",
+          value_code: opt.code,
+          is_enabled: true,
+          is_default: opt.code === "SUGAR_100",
+          sort_order: 0
+        }));
+        await supabaseAdmin.from("product_option_values").upsert(optionRows, { onConflict: "product_id,group_code,value_code" });
+      }
+    }
 
     // Upsert prices if provided
     if (validated.prices) {
@@ -230,6 +275,13 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const validated = patchProductSchema.parse(body);
+
+    const has_sugar = validated.patch.has_sugar_options;
+    const sugarOptionsCodes = validated.patch.sugar_options;
+    const sugarDefaultCode = validated.patch.sugar_default;
+    delete validated.patch.has_sugar_options;
+    delete (validated.patch as any).sugar_options;
+    delete (validated.patch as any).sugar_default;
 
     // Update product if patch fields provided
     if (Object.keys(validated.patch).length > 0) {
@@ -293,6 +345,43 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Update sugar options
+    if (sugarOptionsCodes !== undefined) {
+      // New behavior: precise per-product sugar options
+      // First remove all existing sugar options
+      await supabaseAdmin.from("product_option_values").delete().eq("product_id", validated.id).eq("group_code", "sugar");
+
+      if (sugarOptionsCodes.length > 0) {
+        const optionRows = sugarOptionsCodes.map(code => ({
+          product_id: validated.id,
+          group_code: "sugar",
+          value_code: code,
+          is_enabled: true,
+          is_default: code === (sugarDefaultCode || "SUGAR_100"),
+          sort_order: 0
+        }));
+        await supabaseAdmin.from("product_option_values").upsert(optionRows, { onConflict: "product_id,group_code,value_code" });
+      }
+    } else if (has_sugar !== undefined) {
+      // Legacy behavior: all-or-nothing toggle
+      if (has_sugar) {
+        const { data: sugarOptions } = await supabaseAdmin.from("option_values").select("code").eq("group_code", "sugar");
+        if (sugarOptions && sugarOptions.length > 0) {
+          const optionRows = sugarOptions.map(opt => ({
+            product_id: validated.id,
+            group_code: "sugar",
+            value_code: opt.code,
+            is_enabled: true,
+            is_default: opt.code === "SUGAR_100",
+            sort_order: 0
+          }));
+          await supabaseAdmin.from("product_option_values").upsert(optionRows, { onConflict: "product_id,group_code,value_code" });
+        }
+      } else {
+        await supabaseAdmin.from("product_option_values").delete().eq("product_id", validated.id).eq("group_code", "sugar");
+      }
+    }
+
     // Fetch updated product
     const { data: product, error: fetchError } = await supabaseAdmin
       .from("products")
@@ -301,6 +390,8 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (fetchError) throw fetchError;
+
+    product.has_sugar_options = has_sugar !== undefined ? has_sugar : false;
 
     return NextResponse.json({ ok: true, product });
   } catch (error: any) {

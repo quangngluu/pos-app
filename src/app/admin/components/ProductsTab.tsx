@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { colors, spacing, typography, borderRadius } from "@/app/lib/designTokens";
 import { Product, Category, sharedStyles } from "./shared";
+
+interface SugarOption { code: string; name_default: string; meta: any; }
 
 function ProductModal({
     product,
@@ -17,7 +19,9 @@ function ProductModal({
     const [name, setName] = useState(product?.name || "");
     const [category, setCategory] = useState(product?.category || "");
     const [isActive, setIsActive] = useState(product?.is_active ?? true);
-    const [hasSugarOptions, setHasSugarOptions] = useState(product?.has_sugar_options ?? false);
+    const [sugarOptions, setSugarOptions] = useState<SugarOption[]>([]);
+    const [selectedSugar, setSelectedSugar] = useState<Set<string>>(new Set());
+    const [sugarDefault, setSugarDefault] = useState<string>("SUGAR_100");
     const [priceMode, setPriceMode] = useState<"single" | "multi">("single");
     const [singleSizeKey, setSingleSizeKey] = useState<string>("SIZE_LA");
     const [priceSTD, setPriceSTD] = useState(product?.prices.STD?.toString() || "");
@@ -28,7 +32,17 @@ function ProductModal({
     const [codeManuallyEdited, setCodeManuallyEdited] = useState(!!product);
     const [codeEditing, setCodeEditing] = useState(false);
 
-    useEffect(() => { fetchCategories(); }, []);
+    // Sugar presets
+    const PRESETS: Record<string, { label: string; codes: string[] }> = {
+        tra_sua: { label: "Trà sữa", codes: ["SUGAR_0_MILK30", "SUGAR_30", "SUGAR_50", "SUGAR_70", "SUGAR_100", "SUGAR_120"] },
+        tra_trai_cay: { label: "Trà trái cây", codes: ["SUGAR_0", "SUGAR_30", "SUGAR_50", "SUGAR_70", "SUGAR_100", "SUGAR_120"] },
+        phe_nau: { label: "Phê Nâu/DL", codes: ["SUGAR_30", "SUGAR_50", "SUGAR_70", "SUGAR_100", "SUGAR_120"] },
+        phe_den: { label: "Phê Đen", codes: ["SUGAR_0_MILK0", "SUGAR_50", "SUGAR_100"] },
+        all: { label: "Tất cả", codes: [] },  // filled dynamically
+    };
+
+    useEffect(() => { fetchCategories(); fetchSugarOptions(); }, []);
+    useEffect(() => { if (product) loadProductSugar(product.id); }, [product]);
     useEffect(() => {
         if (product) {
             const hasMulti = !!(product.prices.SIZE_PHE || product.prices.SIZE_LA);
@@ -60,6 +74,40 @@ function ProductModal({
         finally { setCategoriesLoading(false); }
     };
 
+    const fetchSugarOptions = async () => {
+        try {
+            const res = await fetch("/api/admin/sugar-options");
+            const data = await res.json();
+            if (data.ok) {
+                setSugarOptions(data.options);
+                PRESETS.all.codes = data.options.map((o: SugarOption) => o.code);
+            }
+        } catch (err) { console.error("Failed to fetch sugar options:", err); }
+    };
+
+    const loadProductSugar = async (productId: string) => {
+        try {
+            const res = await fetch(`/api/admin/sugar-options?product_id=${productId}`);
+            const data = await res.json();
+            if (data.ok && data.selected) {
+                setSelectedSugar(new Set(data.selected.map((s: any) => s.value_code)));
+                const def = data.selected.find((s: any) => s.is_default);
+                if (def) setSugarDefault(def.value_code);
+            }
+        } catch (err) { console.error("Failed to load product sugar:", err); }
+    };
+
+    const toggleSugar = (code: string) => {
+        setSelectedSugar(prev => {
+            const next = new Set(prev);
+            if (next.has(code)) next.delete(code);
+            else next.add(code);
+            return next;
+        });
+    };
+
+    const applyPreset = (codes: string[]) => setSelectedSugar(new Set(codes));
+
     const generateCode = async (cat: string, productName: string) => {
         try {
             const res = await fetch(`/api/admin/products/generate-code?category=${encodeURIComponent(cat)}&name=${encodeURIComponent(productName)}`);
@@ -81,7 +129,7 @@ function ProductModal({
             if (pricePHE.trim() && !isNaN(parseFloat(pricePHE))) prices.SIZE_PHE = parseFloat(pricePHE);
             if (priceLA.trim() && !isNaN(parseFloat(priceLA))) prices.SIZE_LA = parseFloat(priceLA);
         }
-        const patch = { code: code.trim(), name: name.trim(), category: category.trim(), category_code: category.trim(), is_active: isActive, has_sugar_options: hasSugarOptions };
+        const patch = { code: code.trim(), name: name.trim(), category: category.trim(), category_code: category.trim(), is_active: isActive, has_sugar_options: selectedSugar.size > 0, sugar_options: Array.from(selectedSugar), sugar_default: sugarDefault };
         onSave(product ? { patch, prices, priceMode } : { ...patch, prices });
     };
 
@@ -146,14 +194,32 @@ function ProductModal({
                 )}
 
                 <div style={{ marginBottom: 16, padding: 16, background: colors.bg.secondary, borderRadius: borderRadius.md, border: `1px solid ${colors.border.light}` }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: hasSugarOptions ? 8 : 0 }}>
-                        <input type="checkbox" checked={hasSugarOptions} onChange={(e) => setHasSugarOptions(e.target.checked)} style={{ width: 16, height: 16 }} />
-                        <span style={{ fontSize: 14, fontWeight: 600 }}>Tùy chọn đường</span>
-                    </label>
-                    {hasSugarOptions && (
-                        <div style={{ fontSize: 13, color: colors.text.secondary, paddingLeft: 24 }}>
-                            Sản phẩm sẽ có 5 mức đường: 0% · 30% · 50% (mặc định) · 70% · 100%
-                        </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: selectedSugar.size > 0 || sugarOptions.length > 0 ? 12 : 0 }}>
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>Tùy chọn đường ({selectedSugar.size}/{sugarOptions.length})</span>
+                        <button type="button" onClick={() => selectedSugar.size > 0 ? setSelectedSugar(new Set()) : applyPreset(sugarOptions.map(o => o.code))} style={{ ...sharedStyles.secondaryButton, padding: "4px 10px", fontSize: 12 }}>{selectedSugar.size > 0 ? "Bỏ hết" : "Chọn tất cả"}</button>
+                    </div>
+                    {sugarOptions.length > 0 && (
+                        <>
+                            <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                                {Object.entries(PRESETS).filter(([k]) => k !== "all").map(([key, preset]) => (
+                                    <button key={key} type="button" onClick={() => applyPreset(preset.codes)} style={{ padding: "3px 10px", fontSize: 11, borderRadius: 12, border: `1px solid ${colors.border.light}`, background: "transparent", color: colors.text.secondary, cursor: "pointer" }}>{preset.label}</button>
+                                ))}
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
+                                {sugarOptions.map(opt => (
+                                    <label key={opt.code} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, padding: "3px 0" }}>
+                                        <input type="checkbox" checked={selectedSugar.has(opt.code)} onChange={() => toggleSugar(opt.code)} style={{ width: 14, height: 14 }} />
+                                        <span>{opt.name_default}</span>
+                                        {selectedSugar.has(opt.code) && (
+                                            <input type="radio" name="sugar_default" checked={sugarDefault === opt.code} onChange={() => setSugarDefault(opt.code)} title="Mặc định" style={{ width: 12, height: 12, marginLeft: "auto" }} />
+                                        )}
+                                    </label>
+                                ))}
+                            </div>
+                            {selectedSugar.size > 0 && (
+                                <div style={{ fontSize: 11, color: colors.text.secondary, marginTop: 8 }}>🔘 = mức đường mặc định khi order</div>
+                            )}
+                        </>
                     )}
                 </div>
 
