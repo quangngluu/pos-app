@@ -19,6 +19,7 @@ function ProductModal({
     const [isActive, setIsActive] = useState(product?.is_active ?? true);
     const [hasSugarOptions, setHasSugarOptions] = useState(product?.has_sugar_options ?? false);
     const [priceMode, setPriceMode] = useState<"single" | "multi">("single");
+    const [singleSizeKey, setSingleSizeKey] = useState<string>("SIZE_LA");
     const [priceSTD, setPriceSTD] = useState(product?.prices.STD?.toString() || "");
     const [pricePHE, setPricePHE] = useState(product?.prices.SIZE_PHE?.toString() || "");
     const [priceLA, setPriceLA] = useState(product?.prices.SIZE_LA?.toString() || "");
@@ -30,7 +31,20 @@ function ProductModal({
     useEffect(() => { fetchCategories(); }, []);
     useEffect(() => {
         if (product) {
-            setPriceMode((product.prices.SIZE_PHE || product.prices.SIZE_LA) ? "multi" : "single");
+            const hasMulti = !!(product.prices.SIZE_PHE || product.prices.SIZE_LA);
+            const hasStd = !!product.prices.STD;
+            if (hasMulti && !hasStd) {
+                setPriceMode("multi");
+            } else if (hasStd && !hasMulti) {
+                setPriceMode("single");
+                setSingleSizeKey("STD");
+                setPriceSTD(product.prices.STD?.toString() || "");
+            } else if (hasMulti) {
+                setPriceMode("multi");
+            } else {
+                setPriceMode("single");
+                setSingleSizeKey("SIZE_LA");
+            }
         }
     }, [product]);
     useEffect(() => {
@@ -59,11 +73,13 @@ function ProductModal({
         if (!category.trim()) { alert("Category is required"); return; }
         const prices: any = {};
         if (priceMode === "single") {
-            if (priceSTD.trim() && !isNaN(parseFloat(priceSTD))) prices.STD = parseFloat(priceSTD);
+            const val = priceSTD.trim() || priceLA.trim();
+            if (val && !isNaN(parseFloat(val))) {
+                prices[singleSizeKey] = parseFloat(val);
+            }
         } else {
             if (pricePHE.trim() && !isNaN(parseFloat(pricePHE))) prices.SIZE_PHE = parseFloat(pricePHE);
             if (priceLA.trim() && !isNaN(parseFloat(priceLA))) prices.SIZE_LA = parseFloat(priceLA);
-            if (priceSTD.trim() && !isNaN(parseFloat(priceSTD))) prices.STD = parseFloat(priceSTD);
         }
         const patch = { code: code.trim(), name: name.trim(), category: category.trim(), category_code: category.trim(), is_active: isActive, has_sugar_options: hasSugarOptions };
         onSave(product ? { patch, prices, priceMode } : { ...patch, prices });
@@ -99,23 +115,49 @@ function ProductModal({
                 <div style={{ marginBottom: 16, padding: 16, background: colors.bg.secondary, borderRadius: borderRadius.md, border: `1px solid ${colors.border.light}` }}>
                     <label style={sharedStyles.labelSemibold}>Pricing Mode</label>
                     <div style={{ display: "flex", gap: 16 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="radio" checked={priceMode === "single"} onChange={() => setPriceMode("single")} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>1 size (STD only)</span></label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="radio" checked={priceMode === "multi"} onChange={() => setPriceMode("multi")} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>Multiple sizes (PHÊ/LA/STD)</span></label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="radio" checked={priceMode === "single"} onChange={() => setPriceMode("single")} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>1 size</span></label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="radio" checked={priceMode === "multi"} onChange={() => setPriceMode("multi")} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>2 sizes (Phê + La)</span></label>
                     </div>
                 </div>
 
                 {priceMode === "single" ? (
-                    <div style={{ marginBottom: 16 }}><label style={sharedStyles.label}>Price (STD)</label><input type="number" value={priceSTD} onChange={(e) => setPriceSTD(e.target.value)} min="0" step="1000" placeholder="45000" style={sharedStyles.input} /></div>
+                    <div style={{ marginBottom: 16 }}>
+                        <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={sharedStyles.label}>Size</label>
+                                <select value={singleSizeKey} onChange={(e) => setSingleSizeKey(e.target.value)} style={{ ...sharedStyles.input, background: colors.bg.secondary, color: colors.text.primary }}>
+                                    <option value="SIZE_LA">La (lớn) — thường dùng</option>
+                                    <option value="SIZE_PHE">Phê (nhỏ)</option>
+                                    <option value="STD">STD (không chia size)</option>
+                                </select>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={sharedStyles.label}>Giá</label>
+                                <input type="number" value={priceMode === "single" && singleSizeKey !== "STD" ? priceLA || priceSTD : priceSTD} onChange={(e) => { if (singleSizeKey === "STD") setPriceSTD(e.target.value); else setPriceLA(e.target.value); }} min="0" step="1000" placeholder="45000" style={sharedStyles.input} />
+                            </div>
+                        </div>
+                        <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 6 }}>💡 Hầu hết sản phẩm 1 size dùng size La. Chọn STD nếu không chia size (VD: topping, merchandise).</div>
+                    </div>
                 ) : (
-                    <div style={{ marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                        <div><label style={sharedStyles.label}>Price PHÊ</label><input type="number" value={pricePHE} onChange={(e) => setPricePHE(e.target.value)} min="0" step="1000" placeholder="35000" style={sharedStyles.input} /></div>
-                        <div><label style={sharedStyles.label}>Price LA</label><input type="number" value={priceLA} onChange={(e) => setPriceLA(e.target.value)} min="0" step="1000" placeholder="45000" style={sharedStyles.input} /></div>
-                        <div><label style={sharedStyles.label}>Price STD (optional)</label><input type="number" value={priceSTD} onChange={(e) => setPriceSTD(e.target.value)} min="0" step="1000" placeholder="55000" style={sharedStyles.input} /></div>
+                    <div style={{ marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div><label style={sharedStyles.label}>Giá Phê (nhỏ)</label><input type="number" value={pricePHE} onChange={(e) => setPricePHE(e.target.value)} min="0" step="1000" placeholder="35000" style={sharedStyles.input} /></div>
+                        <div><label style={sharedStyles.label}>Giá La (lớn)</label><input type="number" value={priceLA} onChange={(e) => setPriceLA(e.target.value)} min="0" step="1000" placeholder="45000" style={sharedStyles.input} /></div>
                     </div>
                 )}
 
+                <div style={{ marginBottom: 16, padding: 16, background: colors.bg.secondary, borderRadius: borderRadius.md, border: `1px solid ${colors.border.light}` }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: hasSugarOptions ? 8 : 0 }}>
+                        <input type="checkbox" checked={hasSugarOptions} onChange={(e) => setHasSugarOptions(e.target.checked)} style={{ width: 16, height: 16 }} />
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>Tùy chọn đường</span>
+                    </label>
+                    {hasSugarOptions && (
+                        <div style={{ fontSize: 13, color: colors.text.secondary, paddingLeft: 24 }}>
+                            Sản phẩm sẽ có 5 mức đường: 0% · 30% · 50% (mặc định) · 70% · 100%
+                        </div>
+                    )}
+                </div>
+
                 <div style={{ marginBottom: 16 }}><label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>Active</span></label></div>
-                <div style={{ marginBottom: 16 }}><label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={hasSugarOptions} onChange={(e) => setHasSugarOptions(e.target.checked)} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>Has Sugar Options</span></label></div>
 
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                     <button onClick={onClose} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}>Cancel</button>
