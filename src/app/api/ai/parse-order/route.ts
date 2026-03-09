@@ -159,8 +159,12 @@ export async function POST(request: Request) {
         }
 
         // OpenRouter provider (OpenAI-compatible)
+        const routerKey = process.env.OPENROUTER_API_KEY;
+        if (!routerKey) {
+            return NextResponse.json({ ok: false, error: "OPENROUTER_API_KEY not configured" }, { status: 500 });
+        }
         const openrouter = createOpenAI({
-            apiKey: process.env.OPENROUTER_API_KEY,
+            apiKey: routerKey,
             baseURL: "https://openrouter.ai/api/v1",
         });
 
