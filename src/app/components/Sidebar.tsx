@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -56,7 +56,7 @@ function isItemActive(item: NavItem, pathname: string, params: URLSearchParams):
 const SIDEBAR_EXPANDED = 220;
 const SIDEBAR_COLLAPSED = 56;
 
-export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+function SidebarInner({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
@@ -239,6 +239,14 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
                 })}
             </nav>
         </aside>
+    );
+}
+
+export function Sidebar(props: { collapsed: boolean; onToggle: () => void }) {
+    return (
+        <Suspense fallback={<aside style={{ width: props.collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED, minWidth: props.collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED, height: "100vh", background: "#2c2418", position: "fixed", top: 0, left: 0 }} />}>
+            <SidebarInner {...props} />
+        </Suspense>
     );
 }
 
