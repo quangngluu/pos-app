@@ -788,6 +788,10 @@ export default function PosPage() {
     }
 
     const digits = phone.replace(/\D/g, "");
+    if (digits.length < 9) {
+      alert("Vui lòng nhập số điện thoại (ít nhất 9 số).");
+      return;
+    }
 
     // BUSINESS RULE C & B: Use line_id for quote lookup, send display_size + price_key to server
     const payloadLines = [];
@@ -1062,7 +1066,18 @@ export default function PosPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
               <span style={{ fontWeight: 600, fontSize: 14 }}>🤖 Smart Order</span>
               {smartOrderStatus === "parsing" && (
-                <span style={{ fontSize: 12, color: "#d97706", fontWeight: 500 }}>Đang phân tích...</span>
+                <span style={{ fontSize: 12, color: "#d97706", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span style={{
+                    display: "inline-block",
+                    width: 12,
+                    height: 12,
+                    border: "2px solid #d97706",
+                    borderTopColor: "transparent",
+                    borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite",
+                  }} />
+                  Đang phân tích...
+                </span>
               )}
               {smartOrderStatus === "done" && (
                 <span style={{ fontSize: 12, color: "#059669", fontWeight: 500 }}>✓ Đã cập nhật giỏ hàng</span>
