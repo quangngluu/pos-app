@@ -107,34 +107,58 @@ async function getFileUrl(fileId: string, token: string): Promise<string | null>
   }
 }
 
-// In-memory store for pending image uploads (order_id -> chat_id mapping)
-// In production, use Redis or database for persistence across instances
-const pendingImageUploads = new Map<string, { chatId: number; messageId?: number; expiresAt: number }>();
+// ── DB-backed pending uploads (replaces in-memory Map) ──
 
-// Clean up expired entries
-function cleanupExpired() {
-  const now = Date.now();
-  for (const [key, value] of pendingImageUploads.entries()) {
-    if (value.expiresAt < now) {
-      pendingImageUploads.delete(key);
-    }
-  }
+async function setPendingUpload(orderId: string, chatId: number, telegramUserId: number, messageId?: number) {
+  // Upsert: one pending upload per telegram user (unique constraint handles conflicts)
+  await supabaseAdmin
+    .from("telegram_pending_uploads")
+    .upsert({
+      order_id: orderId,
+      chat_id: chatId,
+      telegram_user_id: telegramUserId,
+      message_id: messageId,
+      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    }, { onConflict: "telegram_user_id" });
 }
 
-export async function POST(req: Request) {
-  // Get bot token (always available due to fallback)
-  const token = getTelegramBotToken();
-  console.log("[Telegram Webhook] Received update, token available:", !!token);
+async function getPendingUpload(telegramUserId: number) {
+  // Find pending upload for THIS specific user (not by chat_id)
+  const { data } = await supabaseAdmin
+    .from("telegram_pending_uploads")
+    .select("order_id, chat_id, message_id")
+    .eq("telegram_user_id", telegramUserId)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
 
-  // Verify webhook secret if configured (optional but recommended)
+  return data;
+}
+
+async function deletePendingUpload(telegramUserId: number) {
+  await supabaseAdmin
+    .from("telegram_pending_uploads")
+    .delete()
+    .eq("telegram_user_id", telegramUserId);
+}
+
+async function cleanupExpiredUploads() {
+  await supabaseAdmin
+    .from("telegram_pending_uploads")
+    .delete()
+    .lt("expires_at", new Date().toISOString());
+}
+
+// ── Webhook handler ──
+
+export async function POST(req: Request) {
+  const token = getTelegramBotToken();
+
+  // Verify webhook secret if configured
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (webhookSecret) {
     const headerSecret = req.headers.get("X-Telegram-Bot-Api-Secret-Token");
     if (headerSecret !== webhookSecret) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
 
@@ -146,22 +170,20 @@ export async function POST(req: Request) {
       const { id: callbackId, data, message, from } = update.callback_query;
       const chatId = message?.chat?.id;
       const messageId = message?.message_id;
+      const telegramUserId = from?.id;
 
-      console.log(`[Telegram Callback] User ${from?.username || from?.id} pressed: ${data}`);
+      console.log(`[Telegram Callback] User ${from?.username || telegramUserId} pressed: ${data}`);
 
       if (!data) {
-        console.log("[Telegram Callback] No data in callback");
         await answerCallback(callbackId, "Invalid callback", token);
         return NextResponse.json({ ok: true });
       }
 
-      // Parse callback data: "status:orderId:newStatus" or "info:orderId"
       const parts = data.split(":");
       const action = parts[0];
       const orderId = parts[1];
 
       if (action === "info") {
-        // Just show current status
         const { data: order } = await supabaseAdmin
           .from("orders")
           .select("status, order_code")
@@ -174,25 +196,24 @@ export async function POST(req: Request) {
       }
 
       if (action === "image") {
-        // User wants to send an image for this order
-        // Store pending upload state
-        cleanupExpired();
-        pendingImageUploads.set(orderId, {
-          chatId,
-          messageId,
-          expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes expiry
-        });
+        // Store pending upload in DB, scoped to this telegram user
+        await setPendingUpload(orderId, chatId, telegramUserId, messageId);
 
-        await answerCallback(callbackId, "📷 Vui lòng gửi hình ảnh cho đơn hàng này", token);
+        await answerCallback(callbackId, "Vui lòng gửi hình ảnh cho đơn hàng này", token);
 
-        // Send instruction message
+        const { data: order } = await supabaseAdmin
+          .from("orders")
+          .select("order_code")
+          .eq("id", orderId)
+          .single();
+
         await sendMessage(
           chatId,
-          `📷 *Gửi hình ảnh cho đơn hàng*\n\nVui lòng gửi hình ảnh (photo) trong vòng 5 phút.\n\n_Hình ảnh sẽ được lưu vào đơn hàng._`,
+          `*Gửi hình ảnh cho đơn #${order?.order_code || "?"}*\n\nVui lòng gửi hình ảnh (photo) trong vòng 5 phút.`,
           token,
           {
             inline_keyboard: [[{
-              text: "❌ Huỷ",
+              text: "Huỷ",
               callback_data: `cancel_image:${orderId}`,
             }]],
           }
@@ -202,8 +223,7 @@ export async function POST(req: Request) {
       }
 
       if (action === "cancel_image") {
-        // Cancel pending image upload
-        pendingImageUploads.delete(orderId);
+        if (telegramUserId) await deletePendingUpload(telegramUserId);
         await answerCallback(callbackId, "Đã huỷ gửi hình ảnh", token);
         return NextResponse.json({ ok: true });
       }
@@ -216,7 +236,6 @@ export async function POST(req: Request) {
           return NextResponse.json({ ok: true });
         }
 
-        // Get current order
         const { data: order, error: fetchErr } = await supabaseAdmin
           .from("orders")
           .select("status, order_code")
@@ -228,7 +247,6 @@ export async function POST(req: Request) {
           return NextResponse.json({ ok: true });
         }
 
-        // Validate status transition using VALID_TRANSITIONS
         const currentStatus = order.status as OrderStatus;
         const allowedNext = VALID_TRANSITIONS[currentStatus];
 
@@ -237,12 +255,9 @@ export async function POST(req: Request) {
           return NextResponse.json({ ok: true });
         }
 
-        // Update order status (only status field - timestamp columns may not exist)
-        const updateData: Record<string, any> = { status: newStatus };
-
         const { error: updateErr } = await supabaseAdmin
           .from("orders")
-          .update(updateData)
+          .update({ status: newStatus })
           .eq("id", orderId);
 
         if (updateErr) {
@@ -253,18 +268,16 @@ export async function POST(req: Request) {
 
         console.log(`[Telegram Callback] Order ${order.order_code} status updated to ${newStatus}`);
 
-        // Update message buttons
+        // Update buttons on original message
         if (chatId && messageId) {
           await editMessageReplyMarkup(chatId, messageId, buildStatusKeyboard(orderId, newStatus), token);
         }
 
-        // Send confirmation with answerCbQuery
         await answerCallback(callbackId, `✅ Đã chuyển sang: ${TELEGRAM_STATUS_LABELS[newStatus]}`, token);
 
-        // Also send a new message to confirm
         await sendMessage(
           chatId,
-          `✅ *Đơn #${order.order_code}* đã được cập nhật\n\nTrạng thái mới: *${TELEGRAM_STATUS_LABELS[newStatus]}*`,
+          `Đơn *#${order.order_code}* → *${TELEGRAM_STATUS_LABELS[newStatus]}*`,
           token
         );
 
@@ -275,100 +288,89 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // Handle photo messages
+    // Handle photo messages — match by TELEGRAM USER ID (not chat_id)
     if (update.message?.photo) {
       const message = update.message;
       const chatId = message.chat?.id;
-      const photos = message.photo; // Array of PhotoSize objects, sorted by size
+      const telegramUserId = message.from?.id;
+      const photos = message.photo;
 
-      if (!chatId || !photos || photos.length === 0) {
+      if (!chatId || !telegramUserId || !photos || photos.length === 0) {
         return NextResponse.json({ ok: true });
       }
 
-      // Get the largest photo (last in array)
-      const largestPhoto = photos[photos.length - 1];
-      const fileId = largestPhoto.file_id;
+      // Cleanup expired entries
+      cleanupExpiredUploads().catch(() => { });
 
-      // Check if there's a pending image upload for any order from this chat
-      cleanupExpired();
-      let matchedOrderId: string | null = null;
+      // Find pending upload for THIS specific user
+      const pending = await getPendingUpload(telegramUserId);
 
-      for (const [orderId, pending] of pendingImageUploads.entries()) {
-        if (pending.chatId === chatId) {
-          matchedOrderId = orderId;
-          break;
-        }
-      }
-
-      if (!matchedOrderId) {
-        // No pending upload - inform user
+      if (!pending) {
         await sendMessage(
           chatId,
-          "⚠️ Không có đơn hàng nào đang chờ hình ảnh.\n\nVui lòng nhấn nút \"📷 Gửi hình ảnh\" trong tin nhắn đơn hàng trước.",
+          "Không có đơn hàng nào đang chờ hình ảnh.\nNhấn nút \"Gửi hình ảnh\" trong tin nhắn đơn hàng trước.",
           token
         );
         return NextResponse.json({ ok: true });
       }
 
-      // Get file URL from Telegram
+      // Get largest photo
+      const largestPhoto = photos[photos.length - 1];
+      const fileId = largestPhoto.file_id;
       const fileUrl = await getFileUrl(fileId, token);
 
-      // Get order info
+      // Get order
       const { data: order, error: orderErr } = await supabaseAdmin
         .from("orders")
         .select("id, order_code, status, images")
-        .eq("id", matchedOrderId)
+        .eq("id", pending.order_id)
         .single();
 
       if (orderErr || !order) {
-        await sendMessage(chatId, "❌ Không tìm thấy đơn hàng.", token);
-        pendingImageUploads.delete(matchedOrderId);
+        await sendMessage(chatId, "Không tìm thấy đơn hàng.", token);
+        await deletePendingUpload(telegramUserId);
         return NextResponse.json({ ok: true });
       }
 
-      // Store image info in order
+      // Save image to order
       const existingImages = Array.isArray(order.images) ? order.images : [];
       const newImage = {
         file_id: fileId,
         file_url: fileUrl,
         uploaded_at: new Date().toISOString(),
         source: "telegram",
+        uploaded_by_telegram_user: telegramUserId,
       };
 
       const { error: updateErr } = await supabaseAdmin
         .from("orders")
-        .update({
-          images: [...existingImages, newImage],
-        })
-        .eq("id", matchedOrderId);
+        .update({ images: [...existingImages, newImage] })
+        .eq("id", pending.order_id);
 
-      // Clean up pending upload
-      pendingImageUploads.delete(matchedOrderId);
+      // Clear pending
+      await deletePendingUpload(telegramUserId);
 
       if (updateErr) {
         console.error("Failed to save image:", updateErr);
-        await sendMessage(chatId, "❌ Lỗi lưu hình ảnh. Vui lòng thử lại.", token);
+        await sendMessage(chatId, "Lỗi lưu hình ảnh. Vui lòng thử lại.", token);
         return NextResponse.json({ ok: true });
       }
 
-      // Send success message
       const imageCount = existingImages.length + 1;
       await sendMessage(
         chatId,
-        `✅ *Đã nhận hình ảnh!*\n\nĐơn hàng #${order.order_code} hiện có ${imageCount} hình ảnh.\n\n_Cảm ơn bạn đã gửi hình ảnh._`,
+        `Đã nhận hình ảnh cho đơn *#${order.order_code}* (${imageCount} ảnh)`,
         token
       );
 
       return NextResponse.json({ ok: true });
     }
 
-    // Handle text messages (for potential order ID replies)
+    // Other message types — ignore
     if (update.message?.text) {
-      // Could implement order lookup by code here if needed
       return NextResponse.json({ ok: true });
     }
 
-    // Other update types - ignore
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("Telegram webhook error:", e);
@@ -376,7 +378,6 @@ export async function POST(req: Request) {
   }
 }
 
-// GET is disabled to prevent public access in production
 export async function GET() {
   return NextResponse.json({ ok: false, error: "Method not allowed" }, { status: 405 });
 }

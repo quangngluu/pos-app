@@ -3,14 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { colors, spacing, typography, borderRadius } from "@/app/lib/designTokens";
 import { Store, sharedStyles } from "./shared";
+import { Drawer } from "@/app/components/Drawer";
 
-function StoreModal({
+function StoreForm({
     store,
-    onClose,
     onSave,
 }: {
     store: Store | null;
-    onClose: () => void;
     onSave: (payload: any) => void;
 }) {
     const [name, setName] = useState(store?.name || "");
@@ -228,143 +227,111 @@ function StoreModal({
     };
 
     return (
-        <div
-            style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: "rgba(15,23,42,0.45)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 1000,
-            }}
-            onClick={onClose}
-        >
-            <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                    ...sharedStyles.modalCard,
-                    width: "90%",
-                    maxWidth: 500,
-                }}
-            >
-                <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
-                    {store ? "Edit Store" : "Create Store"}
-                </h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-                {/* Name */}
-                <div style={{ marginBottom: 16 }}>
-                    <label style={sharedStyles.label}>Name *</label>
-                    <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Store name"
-                        style={sharedStyles.input}
-                    />
-                </div>
+            {/* Name */}
+            <div style={{ marginBottom: 16 }}>
+                <label style={sharedStyles.label}>Name *</label>
+                <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Store name"
+                    style={sharedStyles.input}
+                />
+            </div>
 
-                {/* Address with autocomplete */}
-                <div style={{ marginBottom: 16, position: "relative" }}>
-                    <label style={sharedStyles.label}>
-                        Address {addrLoading && "(loading...)"}
-                    </label>
-                    <input
-                        ref={inputRef}
-                        type="text"
-                        value={addrQuery}
-                        onChange={(e) => handleAddressInput(e.target.value)}
-                        placeholder="Start typing an address..."
-                        style={sharedStyles.input}
-                    />
-                    {addrError && (
-                        <div style={{ color: colors.status.error, fontSize: 12, marginTop: 4 }}>
-                            {addrError}
-                        </div>
-                    )}
-
-                    {/* Autocomplete dropdown */}
-                    {addrOpen && addrSuggestions.length > 0 && (
-                        <div
-                            ref={dropdownRef}
-                            style={{
-                                position: "absolute",
-                                top: "100%",
-                                left: 0,
-                                right: 0,
-                                background: colors.bg.primary,
-                                border: `1px solid ${colors.border.light}`,
-                                borderRadius: borderRadius.md,
-                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                                zIndex: 1001,
-                                maxHeight: 250,
-                                overflowY: "auto",
-                            }}
-                        >
-                            {addrSuggestions.map((item: any, idx: number) => (
-                                <div
-                                    key={item.place_id || idx}
-                                    onClick={() => handleSelectSuggestion(item)}
-                                    style={{
-                                        padding: "10px 12px",
-                                        cursor: "pointer",
-                                        borderBottom: idx < addrSuggestions.length - 1 ? `1px solid ${colors.border.light}` : undefined,
-                                        fontSize: 14,
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = colors.bg.secondary; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = colors.bg.primary; }}
-                                >
-                                    <div style={{ fontWeight: 500 }}>{item.main_text || item.display_name}</div>
-                                    {item.secondary_text && (
-                                        <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 2 }}>
-                                            {item.secondary_text}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Coordinates display */}
-                {(lat != null && lng != null) && (
-                    <div style={{ marginBottom: 16, padding: 12, background: colors.bg.secondary, borderRadius: borderRadius.md, fontSize: 13, color: colors.text.secondary }}>
-                        📍 {lat.toFixed(6)}, {lng.toFixed(6)}
-                        {selectedPlaceId && <span style={{ marginLeft: 8, fontSize: 11 }}>({selectedPlaceId})</span>}
+            {/* Address with autocomplete */}
+            <div style={{ marginBottom: 16, position: "relative" }}>
+                <label style={sharedStyles.label}>
+                    Address {addrLoading && "(loading...)"}
+                </label>
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={addrQuery}
+                    onChange={(e) => handleAddressInput(e.target.value)}
+                    placeholder="Start typing an address..."
+                    style={sharedStyles.input}
+                />
+                {addrError && (
+                    <div style={{ color: colors.status.error, fontSize: 12, marginTop: 4 }}>
+                        {addrError}
                     </div>
                 )}
 
-                {/* Active Toggle */}
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                        <input
-                            type="checkbox"
-                            checked={isActive}
-                            onChange={(e) => setIsActive(e.target.checked)}
-                            style={{ width: 16, height: 16 }}
-                        />
-                        <span style={{ fontSize: 14 }}>Active</span>
-                    </label>
-                </div>
+                {/* Autocomplete dropdown */}
+                {addrOpen && addrSuggestions.length > 0 && (
+                    <div
+                        ref={dropdownRef}
+                        style={{
+                            position: "absolute",
+                            top: "100%",
+                            left: 0,
+                            right: 0,
+                            background: colors.bg.primary,
+                            border: `1px solid ${colors.border.light}`,
+                            borderRadius: borderRadius.md,
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                            zIndex: 1001,
+                            maxHeight: 250,
+                            overflowY: "auto",
+                        }}
+                    >
+                        {addrSuggestions.map((item: any, idx: number) => (
+                            <div
+                                key={item.place_id || idx}
+                                onClick={() => handleSelectSuggestion(item)}
+                                style={{
+                                    padding: "10px 12px",
+                                    cursor: "pointer",
+                                    borderBottom: idx < addrSuggestions.length - 1 ? `1px solid ${colors.border.light}` : undefined,
+                                    fontSize: 14,
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = colors.bg.secondary; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = colors.bg.primary; }}
+                            >
+                                <div style={{ fontWeight: 500 }}>{item.main_text || item.display_name}</div>
+                                {item.secondary_text && (
+                                    <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 2 }}>
+                                        {item.secondary_text}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
 
-                {/* Buttons */}
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button
-                        onClick={onClose}
-                        style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['14']}` }}
-                    >
-                        Save
-                    </button>
+            {/* Coordinates display */}
+            {(lat != null && lng != null) && (
+                <div style={{ marginBottom: 16, padding: 12, background: colors.bg.secondary, borderRadius: borderRadius.md, fontSize: 13, color: colors.text.secondary }}>
+                    📍 {lat.toFixed(6)}, {lng.toFixed(6)}
+                    {selectedPlaceId && <span style={{ marginLeft: 8, fontSize: 11 }}>({selectedPlaceId})</span>}
                 </div>
+            )}
+
+            {/* Active Toggle */}
+            <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input
+                        type="checkbox"
+                        checked={isActive}
+                        onChange={(e) => setIsActive(e.target.checked)}
+                        style={{ width: 16, height: 16 }}
+                    />
+                    <span style={{ fontSize: 14 }}>Active</span>
+                </label>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", borderTop: `1px solid ${colors.border.light}`, paddingTop: 16 }}>
+                <button
+                    onClick={handleSubmit}
+                    style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['24']}` }}
+                >
+                    {store ? "Update Store" : "Create Store"}
+                </button>
             </div>
         </div>
     );
@@ -629,13 +596,18 @@ export function StoresTab({ setError }: { setError: (msg: string | null) => void
                 </div>
             )}
 
-            {showModal && (
-                <StoreModal
+            <Drawer
+                open={showModal}
+                onClose={() => setShowModal(false)}
+                title={editingStore ? "Edit Store" : "Create Store"}
+                width={480}
+            >
+                <StoreForm
+                    key={editingStore?.id || "new"}
                     store={editingStore}
-                    onClose={() => setShowModal(false)}
                     onSave={handleSave}
                 />
-            )}
+            </Drawer>
         </div>
     );
 }

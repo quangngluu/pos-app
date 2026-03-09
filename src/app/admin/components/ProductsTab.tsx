@@ -3,16 +3,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { colors, spacing, typography, borderRadius } from "@/app/lib/designTokens";
 import { Product, Category, sharedStyles } from "./shared";
+import { Drawer } from "@/app/components/Drawer";
 
 interface SugarOption { code: string; name_default: string; meta: any; }
 
-function ProductModal({
+function ProductForm({
     product,
-    onClose,
     onSave,
 }: {
     product: Product | null;
-    onClose: () => void;
     onSave: (payload: any) => void;
 }) {
     const [code, setCode] = useState(product?.code || "");
@@ -134,101 +133,99 @@ function ProductModal({
     };
 
     return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onClose}>
-            <div onClick={(e) => e.stopPropagation()} style={{ ...sharedStyles.modalCard, width: "90%", maxWidth: 700 }}>
-                <h2 style={{ marginTop: 0, marginBottom: 20 }}>{product ? "Edit Product" : "Create Product"}</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
+            <div style={{ marginBottom: 16 }}>
+                <label style={sharedStyles.label}>Category *</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={categoriesLoading} style={{ ...sharedStyles.input, color: colors.text.primary, background: colors.bg.secondary }}>
+                    <option value="">-- Select Category --</option>
+                    {categories.map((cat) => <option key={cat.code} value={cat.code}>{cat.name} ({cat.code})</option>)}
+                </select>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+                <label style={sharedStyles.label}>Name *</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Phở mai cà phê..." style={sharedStyles.input} />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+                <label style={sharedStyles.label}>Code *</label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input type="text" value={code} onChange={(e) => setCode(e.target.value)} disabled={!codeEditing && !product} placeholder="Auto-generated..." style={{ ...sharedStyles.input, flex: 1, background: !codeEditing && !product ? colors.bg.tertiary : colors.bg.secondary, color: !codeEditing && !product ? colors.text.secondary : colors.text.primary, cursor: !codeEditing && !product ? "not-allowed" : "text", fontFamily: typography.fontFamily.mono }} />
+                    {!product && !codeEditing && <button onClick={() => { setCodeEditing(true); setCodeManuallyEdited(true); }} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['12']}` }}>Edit</button>}
+                </div>
+                {!product && !codeManuallyEdited && <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 4 }}>Code auto-generated from category + name</div>}
+            </div>
+
+            <div style={{ marginBottom: 16, padding: 16, background: colors.bg.secondary, borderRadius: borderRadius.md, border: `1px solid ${colors.border.light}` }}>
+                <label style={sharedStyles.labelSemibold}>Pricing Mode</label>
+                <div style={{ display: "flex", gap: 16 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="radio" checked={priceMode === "single"} onChange={() => setPriceMode("single")} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>1 size</span></label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="radio" checked={priceMode === "multi"} onChange={() => setPriceMode("multi")} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>2 sizes (Phê + La)</span></label>
+                </div>
+            </div>
+
+            {priceMode === "single" ? (
                 <div style={{ marginBottom: 16 }}>
-                    <label style={sharedStyles.label}>Category *</label>
-                    <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={categoriesLoading} style={{ ...sharedStyles.input, color: colors.text.primary, background: colors.bg.secondary }}>
-                        <option value="">-- Select Category --</option>
-                        {categories.map((cat) => <option key={cat.code} value={cat.code}>{cat.name} ({cat.code})</option>)}
-                    </select>
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                    <label style={sharedStyles.label}>Name *</label>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Phở mai cà phê..." style={sharedStyles.input} />
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                    <label style={sharedStyles.label}>Code *</label>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input type="text" value={code} onChange={(e) => setCode(e.target.value)} disabled={!codeEditing && !product} placeholder="Auto-generated..." style={{ ...sharedStyles.input, flex: 1, background: !codeEditing && !product ? colors.bg.tertiary : colors.bg.secondary, color: !codeEditing && !product ? colors.text.secondary : colors.text.primary, cursor: !codeEditing && !product ? "not-allowed" : "text", fontFamily: typography.fontFamily.mono }} />
-                        {!product && !codeEditing && <button onClick={() => { setCodeEditing(true); setCodeManuallyEdited(true); }} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['12']}` }}>Edit</button>}
-                    </div>
-                    {!product && !codeManuallyEdited && <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 4 }}>Code auto-generated from category + name</div>}
-                </div>
-
-                <div style={{ marginBottom: 16, padding: 16, background: colors.bg.secondary, borderRadius: borderRadius.md, border: `1px solid ${colors.border.light}` }}>
-                    <label style={sharedStyles.labelSemibold}>Pricing Mode</label>
-                    <div style={{ display: "flex", gap: 16 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="radio" checked={priceMode === "single"} onChange={() => setPriceMode("single")} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>1 size</span></label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="radio" checked={priceMode === "multi"} onChange={() => setPriceMode("multi")} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>2 sizes (Phê + La)</span></label>
-                    </div>
-                </div>
-
-                {priceMode === "single" ? (
-                    <div style={{ marginBottom: 16 }}>
-                        <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
-                            <div style={{ flex: 1 }}>
-                                <label style={sharedStyles.label}>Size</label>
-                                <select value={singleSizeKey} onChange={(e) => setSingleSizeKey(e.target.value)} style={{ ...sharedStyles.input, background: colors.bg.secondary, color: colors.text.primary }}>
-                                    <option value="SIZE_LA">La (lớn) — thường dùng</option>
-                                    <option value="SIZE_PHE">Phê (nhỏ)</option>
-                                    <option value="STD">STD (không chia size)</option>
-                                </select>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <label style={sharedStyles.label}>Giá</label>
-                                <input type="number" value={priceMode === "single" && singleSizeKey !== "STD" ? priceLA || priceSTD : priceSTD} onChange={(e) => { if (singleSizeKey === "STD") setPriceSTD(e.target.value); else setPriceLA(e.target.value); }} min="0" step="1000" placeholder="45000" style={sharedStyles.input} />
-                            </div>
+                    <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                        <div style={{ flex: 1 }}>
+                            <label style={sharedStyles.label}>Size</label>
+                            <select value={singleSizeKey} onChange={(e) => setSingleSizeKey(e.target.value)} style={{ ...sharedStyles.input, background: colors.bg.secondary, color: colors.text.primary }}>
+                                <option value="SIZE_LA">La (lớn) — thường dùng</option>
+                                <option value="SIZE_PHE">Phê (nhỏ)</option>
+                                <option value="STD">STD (không chia size)</option>
+                            </select>
                         </div>
-                        <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 6 }}>💡 Hầu hết sản phẩm 1 size dùng size La. Chọn STD nếu không chia size (VD: topping, merchandise).</div>
+                        <div style={{ flex: 1 }}>
+                            <label style={sharedStyles.label}>Giá</label>
+                            <input type="number" value={priceMode === "single" && singleSizeKey !== "STD" ? priceLA || priceSTD : priceSTD} onChange={(e) => { if (singleSizeKey === "STD") setPriceSTD(e.target.value); else setPriceLA(e.target.value); }} min="0" step="1000" placeholder="45000" style={sharedStyles.input} />
+                        </div>
                     </div>
-                ) : (
-                    <div style={{ marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        <div><label style={sharedStyles.label}>Giá Phê (nhỏ)</label><input type="number" value={pricePHE} onChange={(e) => setPricePHE(e.target.value)} min="0" step="1000" placeholder="35000" style={sharedStyles.input} /></div>
-                        <div><label style={sharedStyles.label}>Giá La (lớn)</label><input type="number" value={priceLA} onChange={(e) => setPriceLA(e.target.value)} min="0" step="1000" placeholder="45000" style={sharedStyles.input} /></div>
-                    </div>
+                    <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 6 }}>💡 Hầu hết sản phẩm 1 size dùng size La. Chọn STD nếu không chia size (VD: topping, merchandise).</div>
+                </div>
+            ) : (
+                <div style={{ marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div><label style={sharedStyles.label}>Giá Phê (nhỏ)</label><input type="number" value={pricePHE} onChange={(e) => setPricePHE(e.target.value)} min="0" step="1000" placeholder="35000" style={sharedStyles.input} /></div>
+                    <div><label style={sharedStyles.label}>Giá La (lớn)</label><input type="number" value={priceLA} onChange={(e) => setPriceLA(e.target.value)} min="0" step="1000" placeholder="45000" style={sharedStyles.input} /></div>
+                </div>
+            )}
+
+            <div style={{ marginBottom: 16, padding: 16, background: colors.bg.secondary, borderRadius: borderRadius.md, border: `1px solid ${colors.border.light}` }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: selectedSugar.size > 0 || sugarOptions.length > 0 ? 12 : 0 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>Tùy chọn đường ({selectedSugar.size}/{sugarOptions.length})</span>
+                    <button type="button" onClick={() => selectedSugar.size > 0 ? setSelectedSugar(new Set()) : applyPreset(sugarOptions.map(o => o.code))} style={{ ...sharedStyles.secondaryButton, padding: "4px 10px", fontSize: 12 }}>{selectedSugar.size > 0 ? "Bỏ hết" : "Chọn tất cả"}</button>
+                </div>
+                {sugarOptions.length > 0 && (
+                    <>
+                        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                            {Object.entries(PRESETS).filter(([k]) => k !== "all").map(([key, preset]) => (
+                                <button key={key} type="button" onClick={() => applyPreset(preset.codes)} style={{ padding: "3px 10px", fontSize: 11, borderRadius: 12, border: `1px solid ${colors.border.light}`, background: "transparent", color: colors.text.secondary, cursor: "pointer" }}>{preset.label}</button>
+                            ))}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
+                            {sugarOptions.map(opt => (
+                                <label key={opt.code} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, padding: "3px 0" }}>
+                                    <input type="checkbox" checked={selectedSugar.has(opt.code)} onChange={() => toggleSugar(opt.code)} style={{ width: 14, height: 14 }} />
+                                    <span>{opt.name_default}</span>
+                                    {selectedSugar.has(opt.code) && (
+                                        <input type="radio" name="sugar_default" checked={sugarDefault === opt.code} onChange={() => setSugarDefault(opt.code)} title="Mặc định" style={{ width: 12, height: 12, marginLeft: "auto" }} />
+                                    )}
+                                </label>
+                            ))}
+                        </div>
+                        {selectedSugar.size > 0 && (
+                            <div style={{ fontSize: 11, color: colors.text.secondary, marginTop: 8 }}>🔘 = mức đường mặc định khi order</div>
+                        )}
+                    </>
                 )}
+            </div>
 
-                <div style={{ marginBottom: 16, padding: 16, background: colors.bg.secondary, borderRadius: borderRadius.md, border: `1px solid ${colors.border.light}` }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: selectedSugar.size > 0 || sugarOptions.length > 0 ? 12 : 0 }}>
-                        <span style={{ fontSize: 14, fontWeight: 600 }}>Tùy chọn đường ({selectedSugar.size}/{sugarOptions.length})</span>
-                        <button type="button" onClick={() => selectedSugar.size > 0 ? setSelectedSugar(new Set()) : applyPreset(sugarOptions.map(o => o.code))} style={{ ...sharedStyles.secondaryButton, padding: "4px 10px", fontSize: 12 }}>{selectedSugar.size > 0 ? "Bỏ hết" : "Chọn tất cả"}</button>
-                    </div>
-                    {sugarOptions.length > 0 && (
-                        <>
-                            <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                                {Object.entries(PRESETS).filter(([k]) => k !== "all").map(([key, preset]) => (
-                                    <button key={key} type="button" onClick={() => applyPreset(preset.codes)} style={{ padding: "3px 10px", fontSize: 11, borderRadius: 12, border: `1px solid ${colors.border.light}`, background: "transparent", color: colors.text.secondary, cursor: "pointer" }}>{preset.label}</button>
-                                ))}
-                            </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
-                                {sugarOptions.map(opt => (
-                                    <label key={opt.code} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, padding: "3px 0" }}>
-                                        <input type="checkbox" checked={selectedSugar.has(opt.code)} onChange={() => toggleSugar(opt.code)} style={{ width: 14, height: 14 }} />
-                                        <span>{opt.name_default}</span>
-                                        {selectedSugar.has(opt.code) && (
-                                            <input type="radio" name="sugar_default" checked={sugarDefault === opt.code} onChange={() => setSugarDefault(opt.code)} title="Mặc định" style={{ width: 12, height: 12, marginLeft: "auto" }} />
-                                        )}
-                                    </label>
-                                ))}
-                            </div>
-                            {selectedSugar.size > 0 && (
-                                <div style={{ fontSize: 11, color: colors.text.secondary, marginTop: 8 }}>🔘 = mức đường mặc định khi order</div>
-                            )}
-                        </>
-                    )}
-                </div>
+            <div style={{ marginBottom: 16 }}><label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>Active</span></label></div>
 
-                <div style={{ marginBottom: 16 }}><label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14 }}>Active</span></label></div>
-
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button onClick={onClose} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}>Cancel</button>
-                    <button onClick={handleSubmit} style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['14']}` }}>Save</button>
-                </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", borderTop: `1px solid ${colors.border.light}`, paddingTop: 16 }}>
+                <button onClick={handleSubmit} style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['24']}` }}>
+                    {product ? "Update Product" : "Create Product"}
+                </button>
             </div>
         </div>
     );
@@ -305,7 +302,18 @@ export function ProductsTab({ setError }: { setError: (msg: string | null) => vo
                 </div>
             )}
 
-            {showModal && <ProductModal product={editingProduct} onClose={() => setShowModal(false)} onSave={handleSave} />}
+            <Drawer
+                open={showModal}
+                onClose={() => setShowModal(false)}
+                title={editingProduct ? "Edit Product" : "Create Product"}
+                width={540}
+            >
+                <ProductForm
+                    key={editingProduct?.id || "new"}
+                    product={editingProduct}
+                    onSave={handleSave}
+                />
+            </Drawer>
         </div>
     );
 }

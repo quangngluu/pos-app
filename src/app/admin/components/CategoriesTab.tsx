@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { colors, spacing } from "@/app/lib/designTokens";
 import { Category, sharedStyles } from "./shared";
+import { Drawer } from "@/app/components/Drawer";
 
-function CategoryModal({ category, onClose, onSave }: { category: Category | null; onClose: () => void; onSave: (payload: any) => void }) {
+function CategoryForm({ category, onSave }: { category: Category | null; onSave: (payload: any) => void }) {
     const [code, setCode] = useState(category?.code || "");
     const [name, setName] = useState(category?.name || "");
     const [sortOrder, setSortOrder] = useState(category?.sort_order?.toString() || "0");
@@ -17,37 +18,34 @@ function CategoryModal({ category, onClose, onSave }: { category: Category | nul
     };
 
     return (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={onClose}>
-            <div onClick={(e) => e.stopPropagation()} style={{ ...sharedStyles.modalCard, width: "90%", maxWidth: 500 }}>
-                <h2 style={{ marginTop: 0, marginBottom: 24 }}>{category ? "Edit Category" : "Create Category"}</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+                <label style={sharedStyles.label}>Code *</label>
+                <input type="text" value={code} onChange={(e) => setCode(e.target.value)} disabled={!!category} placeholder="DRINK, CAKE, TOPPING..." style={{ ...(category ? sharedStyles.disabledInput : sharedStyles.input), textTransform: "uppercase" }} />
+                {category && <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 4 }}>Code cannot be changed after creation</div>}
+            </div>
 
-                <div style={{ marginBottom: 16 }}>
-                    <label style={sharedStyles.label}>Code *</label>
-                    <input type="text" value={code} onChange={(e) => setCode(e.target.value)} disabled={!!category} placeholder="DRINK, CAKE, TOPPING..." style={{ ...(category ? sharedStyles.disabledInput : sharedStyles.input), textTransform: "uppercase" }} />
-                    {category && <div style={{ fontSize: 12, color: colors.text.secondary, marginTop: 4 }}>Code cannot be changed after creation</div>}
-                </div>
+            <div>
+                <label style={sharedStyles.label}>Name *</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Đồ uống, Bánh..." style={sharedStyles.input} />
+            </div>
 
-                <div style={{ marginBottom: 16 }}>
-                    <label style={sharedStyles.label}>Name *</label>
-                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Đồ uống, Bánh..." style={sharedStyles.input} />
-                </div>
+            <div>
+                <label style={sharedStyles.label}>Sort Order</label>
+                <input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} min="0" style={{ ...sharedStyles.input, maxWidth: 160 }} />
+            </div>
 
-                <div style={{ marginBottom: 16 }}>
-                    <label style={sharedStyles.label}>Sort Order</label>
-                    <input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} min="0" style={sharedStyles.input} />
-                </div>
+            <div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: 16, height: 16 }} />
+                    <span style={{ fontSize: 14 }}>Active</span>
+                </label>
+            </div>
 
-                <div style={{ marginBottom: 16 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                        <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: 16, height: 16 }} />
-                        <span style={{ fontSize: 14 }}>Active</span>
-                    </label>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button onClick={onClose} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['10']} ${spacing['14']}` }}>Cancel</button>
-                    <button onClick={handleSubmit} style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['14']}` }}>Save</button>
-                </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", borderTop: `1px solid ${colors.border.light}`, paddingTop: 16 }}>
+                <button onClick={handleSubmit} style={{ ...sharedStyles.primaryButton, padding: `${spacing['10']} ${spacing['24']}` }}>
+                    {category ? "Update Category" : "Create Category"}
+                </button>
             </div>
         </div>
     );
@@ -57,7 +55,7 @@ export function CategoriesTab({ setError }: { setError: (msg: string | null) => 
     const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
-    const [showModal, setShowModal] = useState(false);
+    const [showDrawer, setShowDrawer] = useState(false);
     const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
     const fetchCategories = async (q = "") => {
@@ -81,7 +79,7 @@ export function CategoriesTab({ setError }: { setError: (msg: string | null) => 
             const res = await fetch("/api/admin/categories", { method: isEdit ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
             const data = await res.json();
             if (!data.ok) throw new Error(data.error);
-            setShowModal(false); fetchCategories(search);
+            setShowDrawer(false); fetchCategories(search);
         } catch (err: any) { setError(err.message || "Failed to save category"); }
     };
 
@@ -89,7 +87,7 @@ export function CategoriesTab({ setError }: { setError: (msg: string | null) => 
         <div>
             <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
                 <input type="text" placeholder="Search categories..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...sharedStyles.input, flex: 1 }} />
-                <button onClick={() => { setEditingCategory(null); setShowModal(true); }} style={sharedStyles.primaryButton}>+ Create Category</button>
+                <button onClick={() => { setEditingCategory(null); setShowDrawer(true); }} style={sharedStyles.primaryButton}>+ Create Category</button>
             </div>
 
             {loading ? (
@@ -110,7 +108,7 @@ export function CategoriesTab({ setError }: { setError: (msg: string | null) => 
                                     <td style={{ padding: 12 }}>{cat.name}</td>
                                     <td style={{ padding: 12, color: colors.text.secondary }}>{cat.sort_order}</td>
                                     <td style={{ padding: 12 }}><span style={{ padding: "4px 8px", borderRadius: 4, fontSize: 12, background: cat.is_active ? colors.status.successLight : colors.bg.secondary, color: cat.is_active ? colors.status.success : colors.text.secondary }}>{cat.is_active ? "Active" : "Inactive"}</span></td>
-                                    <td style={{ padding: 12 }}><button onClick={() => { setEditingCategory(cat); setShowModal(true); }} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}>Edit</button></td>
+                                    <td style={{ padding: 12 }}><button onClick={() => { setEditingCategory(cat); setShowDrawer(true); }} style={{ ...sharedStyles.secondaryButton, padding: `${spacing['8']} ${spacing['12']}` }}>Edit</button></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -118,7 +116,18 @@ export function CategoriesTab({ setError }: { setError: (msg: string | null) => 
                 </div>
             )}
 
-            {showModal && <CategoryModal category={editingCategory} onClose={() => setShowModal(false)} onSave={handleSave} />}
+            <Drawer
+                open={showDrawer}
+                onClose={() => setShowDrawer(false)}
+                title={editingCategory ? "Edit Category" : "Create Category"}
+                width={420}
+            >
+                <CategoryForm
+                    key={editingCategory?.code || "new"}
+                    category={editingCategory}
+                    onSave={handleSave}
+                />
+            </Drawer>
         </div>
     );
 }

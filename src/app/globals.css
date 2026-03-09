@@ -1,47 +1,47 @@
 @import "tailwindcss";
 
-/* Design System Tokens */
+/* Design System Tokens — Phê La Brand Palette */
 :root {
-  /* Colors - Background */
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f9fafb;
-  --color-bg-tertiary: #f3f4f6;
-  --color-bg-inverse: #1f2937;
-  --color-bg-dark: #111827;
-  --color-bg-darker: #0a0a0a;
+  /* Colors - Background (warm kraft/beige) */
+  --color-bg-primary: #faf6f0;
+  --color-bg-secondary: #f3ece2;
+  --color-bg-tertiary: #e8dfd3;
+  --color-bg-inverse: #2c2418;
+  --color-bg-dark: #1a1510;
+  --color-bg-darker: #0f0c08;
 
-  /* Colors - Text */
-  --color-text-primary: #111827;
-  --color-text-secondary: #4b5563;
-  --color-text-tertiary: #6b7280;
-  --color-text-light: #d1d5db;
-  --color-text-lighter: #e5e7eb;
-  --color-text-muted: #6b7280;
-  --color-text-inverse: #ffffff;
+  /* Colors - Text (warm dark brown → muted) */
+  --color-text-primary: #2c2418;
+  --color-text-secondary: #5c5040;
+  --color-text-tertiary: #8a7e6e;
+  --color-text-light: #c4b8a6;
+  --color-text-lighter: #ddd3c4;
+  --color-text-muted: #8a7e6e;
+  --color-text-inverse: #faf6f0;
 
   /* Colors - Status */
-  --color-status-success: #10b981;
-  --color-status-success-light: #d1fae5;
-  --color-status-error: #ef4444;
-  --color-status-error-light: #fee2e2;
-  --color-status-warning: #f59e0b;
-  --color-status-warning-light: #fef3c7;
-  --color-status-info: #3b82f6;
-  --color-status-info-light: #dbeafe;
+  --color-status-success: #2d8a5e;
+  --color-status-success-light: #d4edda;
+  --color-status-error: #c0392b;
+  --color-status-error-light: #f8d7da;
+  --color-status-warning: #d4a017;
+  --color-status-warning-light: #fff3cd;
+  --color-status-info: #6b4c2a;
+  --color-status-info-light: #f0e6d6;
 
-  /* Colors - Interactive */
-  --color-interactive-primary: #3b82f6;
-  --color-interactive-primary-hover: #2563eb;
-  --color-interactive-secondary: #e5e7eb;
-  --color-interactive-secondary-hover: #d1d5db;
+  /* Colors - Interactive (coffee brown) */
+  --color-interactive-primary: #6b4c2a;
+  --color-interactive-primary-hover: #543c20;
+  --color-interactive-secondary: #e8dfd3;
+  --color-interactive-secondary-hover: #ddd3c4;
 
-  /* Colors - Border & Shadow */
-  --color-border-light: #e5e7eb;
-  --color-border-medium: #d1d5db;
-  --color-border-dark: #9ca3af;
-  --color-shadow-light: rgba(0, 0, 0, 0.05);
-  --color-shadow-medium: rgba(0, 0, 0, 0.1);
-  --color-shadow-dark: rgba(0, 0, 0, 0.15);
+  /* Colors - Border & Shadow (warm) */
+  --color-border-light: #ddd3c4;
+  --color-border-medium: #c4b8a6;
+  --color-border-dark: #a69882;
+  --color-shadow-light: rgba(44, 36, 24, 0.05);
+  --color-shadow-medium: rgba(44, 36, 24, 0.1);
+  --color-shadow-dark: rgba(44, 36, 24, 0.15);
 
   /* Spacing Scale (8px base) */
   --spacing-0: 0;

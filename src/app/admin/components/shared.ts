@@ -24,19 +24,7 @@ export type Store = {
     addr_display_name?: string | null;
 };
 
-export type Promotion = {
-    code: string;
-    name: string;
-    promo_type: string;
-    priority: number;
-    is_stackable: boolean;
-    is_active: boolean;
-    start_at: string | null;
-    end_at: string | null;
-    percent_off: number | null;
-    min_qty: number | null;
-    scopes?: string[];
-};
+export type { Promotion } from "@/app/lib/promotions/types";
 
 export type Product = {
     id: string;

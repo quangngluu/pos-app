@@ -338,18 +338,49 @@ export async function POST(req: Request) {
 
       const formatMoney = (n: number) => n.toLocaleString("vi-VN") + "đ";
 
-      const lineItemsText = linesToInsert.map(l =>
-        `- ${l.qty}x ${l.product_name_snapshot} (${l.price_key_snapshot.replace("SIZE_", "")})` +
-        (l.options_snapshot.sugar_value_code ? ` - ${l.options_snapshot.sugar_value_code}% đường` : "") +
-        (l.note ? `\n  _Ghi chú: ${l.note}_` : "")
+      const lineItemsText = linesToInsert.map((l, i) =>
+        `${i + 1}. ${l.qty}x *${l.product_name_snapshot}* (${l.price_key_snapshot.replace("SIZE_", "")})` +
+        (l.options_snapshot.sugar_value_code ? ` — ${l.options_snapshot.sugar_value_code}% đường` : "") +
+        ` → ${formatMoney(l.line_total)}` +
+        (l.note ? `\n   _${l.note}_` : "")
       ).join("\n");
 
-      let telegramMessage = ``;
-      telegramMessage += `Khách: *${customerName || "Khách Vãng Lai"}* (${phoneNumber})\n`;
-      telegramMessage += `Tổng: *${formatMoney(grandTotal)}*\n\n`;
-      telegramMessage += `📦 *Món ăn:*\n${lineItemsText}\n\n`;
-      if (cleanNote) telegramMessage += `📝 *Ghi chú chung:*\n${cleanNote}\n\n`;
-      telegramMessage += `📍 *Giao đến:*\n${fullAddress || "Nhận tại cửa hàng"}`;
+      const parts: string[] = [];
+
+      // Customer
+      parts.push(`*${customerName || "Khách Vãng Lai"}* — ${phoneNumber}`);
+
+      // Context
+      const contextParts: string[] = [];
+      if (storeData?.name) contextParts.push(storeData.name);
+      if (platform) contextParts.push(platform);
+      if (deliveryTime) contextParts.push(`giao ${deliveryTime}`);
+      if (contextParts.length > 0) parts.push(contextParts.join(" · "));
+
+      // Items
+      parts.push("");
+      parts.push(lineItemsText);
+
+      // Pricing
+      parts.push("");
+      if (quote.totals.discount_total > 0) {
+        parts.push(`Tạm tính: ${formatMoney(quote.totals.subtotal_before)}`);
+        parts.push(`Giảm: -${formatMoney(quote.totals.discount_total)}${body.promotion_code ? ` (${body.promotion_code})` : ""}`);
+      }
+      if (shippingPay > 0) {
+        parts.push(`Ship: ${formatMoney(shippingPay)}`);
+      }
+      parts.push(`*Tổng: ${formatMoney(grandTotal)}*`);
+
+      // Notes & address
+      if (cleanNote) {
+        parts.push("");
+        parts.push(`_${cleanNote}_`);
+      }
+      parts.push("");
+      parts.push(`Giao: *${fullAddress || "Nhận tại cửa hàng"}*`);
+
+      const telegramMessage = parts.join("\n");
 
       // We run this without awaiting it fully blocking the client response,
       // but await it here to ensure it finishes or fails gracefully if serverless 

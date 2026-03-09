@@ -9,3 +9,6 @@ export { Modal } from './Modal';
 export { Navigation } from './Navigation';
 export { ChipGroup } from './ChipGroup';
 export type { ChipGroupOption, ChipGroupProps } from './ChipGroup';
+export { Sidebar, SIDEBAR_EXPANDED, SIDEBAR_COLLAPSED } from './Sidebar';
+export { Drawer } from './Drawer';
+export { AppShell } from './AppShell';
