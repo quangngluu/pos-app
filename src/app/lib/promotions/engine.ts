@@ -58,9 +58,9 @@ export async function quoteOrder(input: {
         const isDev = process.env.NODE_ENV !== "production";
 
         /* =========================
-           1. Load data in parallel
+           1. Load ALL data in parallel (single round-trip)
         ========================= */
-        const [productsResult, variantsResult, legacyPricesResult, promoResult] = await Promise.all([
+        const [productsResult, variantsResult, legacyPricesResult, promoResult, scopesResult, rulesResult] = await Promise.all([
             supabaseAdmin
                 .from("products")
                 .select("*")
@@ -91,6 +91,20 @@ export async function quoteOrder(input: {
                     .eq("code", promotion_code)
                     .eq("is_active", true)
                     .maybeSingle()
+                : Promise.resolve({ data: null, error: null }),
+            // Scope targets & rules: load in same batch (no-op if no promo code)
+            promotion_code
+                ? supabaseAdmin
+                    .from("promotion_scope_targets")
+                    .select("target_type, target_id, is_included")
+                    .eq("promotion_code", promotion_code)
+                : Promise.resolve({ data: null, error: null }),
+            promotion_code
+                ? supabaseAdmin
+                    .from("promotion_rules")
+                    .select("*")
+                    .eq("promotion_code", promotion_code)
+                    .order("rule_order", { ascending: true })
                 : Promise.resolve({ data: null, error: null }),
         ]);
 
@@ -170,7 +184,7 @@ export async function quoteOrder(input: {
         });
 
         /* =========================
-           2. Load & validate promotion
+           2. Validate promotion & extract scopes/rules
         ========================= */
         let promo = promoResult.data;
 
@@ -184,25 +198,14 @@ export async function quoteOrder(input: {
         let promotionRules: PromotionRule[] = [];
 
         if (promo?.code) {
-            // Load unified scopes
-            const scopesResult = await supabaseAdmin
-                .from("promotion_scope_targets")
-                .select("target_type, target_id, is_included")
-                .eq("promotion_code", promo.code);
-
-            if (scopesResult.data && scopesResult.data.length > 0) {
+            // Scopes already loaded in parallel
+            if (scopesResult.data && (scopesResult.data as any[]).length > 0) {
                 scopeTargets = scopesResult.data as ScopeTarget[];
             }
 
-            // Load rules
-            const rulesResult = await supabaseAdmin
-                .from("promotion_rules")
-                .select("*")
-                .eq("promotion_code", promo.code)
-                .order("rule_order", { ascending: true });
-
-            if (rulesResult.data && rulesResult.data.length > 0) {
-                promotionRules = rulesResult.data.map(r => ({
+            // Rules already loaded in parallel
+            if (rulesResult.data && (rulesResult.data as any[]).length > 0) {
+                promotionRules = (rulesResult.data as any[]).map(r => ({
                     id: r.id,
                     promotion_code: r.promotion_code,
                     rule_order: r.rule_order,
